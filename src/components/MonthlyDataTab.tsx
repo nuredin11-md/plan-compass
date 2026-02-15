@@ -2,7 +2,9 @@ import { useState, useMemo } from "react";
 import { indicators, MONTHS, type MonthlyEntry } from "@/data/hospitalIndicators";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Search, CalendarDays, ClipboardEdit } from "lucide-react";
 
 interface Props {
   monthlyData: MonthlyEntry[];
@@ -11,9 +13,16 @@ interface Props {
 
 export default function MonthlyDataTab({ monthlyData, setMonthlyData }: Props) {
   const [selectedCode, setSelectedCode] = useState(indicators[0].code);
+  const [selectedMonth, setSelectedMonth] = useState(MONTHS[0]);
   const [search, setSearch] = useState("");
 
+  // 1. Find the master plan indicator details
   const currentIndicator = indicators.find((i) => i.code === selectedCode);
+
+  // 2. Find the specific data entry for this Indicator + Month combo
+  const currentEntry = monthlyData.find(
+    (e) => e.code === selectedCode && e.month === selectedMonth
+  );
 
   const filteredIndicators = useMemo(() => {
     if (!search) return indicators;
@@ -24,111 +33,123 @@ export default function MonthlyDataTab({ monthlyData, setMonthlyData }: Props) {
     );
   }, [search]);
 
-  const rows = useMemo(() => {
-    return MONTHS.map((month) => {
-      const entry = monthlyData.find((e) => e.code === selectedCode && e.month === month);
-      return { month, actual: entry?.actual ?? null, remarks: entry?.remarks ?? "" };
-    });
-  }, [selectedCode, monthlyData]);
-
-  const updateEntry = (month: string, field: "actual" | "remarks", value: string) => {
+  // 3. Centralized update function
+  const handleUpdate = (field: "actual" | "remarks", value: string) => {
     setMonthlyData((prev) => {
-      const copy = [...prev];
-      const idx = copy.findIndex((e) => e.code === selectedCode && e.month === month);
+      const idx = prev.findIndex((e) => e.code === selectedCode && e.month === selectedMonth);
+      const newValue = field === "actual" ? (value === "" ? null : Number(value)) : value;
+
       if (idx >= 0) {
-        copy[idx] = {
-          ...copy[idx],
-          [field]: field === "actual" ? (value === "" ? null : Number(value)) : value,
-        };
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], [field]: newValue };
+        return copy;
+      } else {
+        // Create new entry if it doesn't exist
+        return [
+          ...prev,
+          {
+            code: selectedCode,
+            month: selectedMonth,
+            actual: field === "actual" ? Number(value) : null,
+            remarks: field === "remarks" ? value : "",
+          } as MonthlyEntry,
+        ];
       }
-      return copy;
     });
   };
 
-  const ytdTotal = rows.reduce((s, r) => s + (r.actual ?? 0), 0);
-  const monthlyTarget = currentIndicator ? Math.round(currentIndicator.target / 12) : 0;
-
   return (
-    <div className="space-y-4">
-      {/* Selector */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search indicators..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <Select value={selectedCode} onValueChange={setSelectedCode}>
-          <SelectTrigger className="w-full sm:w-[400px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {filteredIndicators.map((ind) => (
-              <SelectItem key={ind.code} value={ind.code}>
-                <span className="font-mono text-xs">{ind.code}</span>
-                <span className="ml-2 text-xs text-muted-foreground truncate">{ind.indicator.substring(0, 50)}</span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Current indicator info */}
-      {currentIndicator && (
-        <div className="rounded-lg border bg-secondary/50 p-4 space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-sm font-semibold text-primary">{currentIndicator.code}</span>
-            <span className="text-xs text-muted-foreground">•</span>
-            <span className="text-sm text-muted-foreground">{currentIndicator.programArea} → {currentIndicator.subProgram}</span>
+    <div className="max-w-2xl mx-auto space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <ClipboardEdit className="h-5 w-5 text-primary" />
+            Data Entry: Master Plan Indicators
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          
+          {/* STEP 1: SELECT INDICATOR */}
+          <div className="space-y-2">
+            <Label>1. Select Indicator from Master Plan</Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground z-10" />
+              <Input
+                placeholder="Search by code or name..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 mb-2"
+              />
+            </div>
+            <Select value={selectedCode} onValueChange={setSelectedCode}>
+              <SelectTrigger className="h-auto py-3">
+                <SelectValue placeholder="Select indicator" />
+              </SelectTrigger>
+              <SelectContent>
+                {filteredIndicators.map((ind) => (
+                  <SelectItem key={ind.code} value={ind.code}>
+                    <div className="flex flex-col items-start">
+                      <span className="font-bold text-xs uppercase">{ind.code}</span>
+                      <span className="text-sm line-clamp-1">{ind.indicator}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <p className="font-medium">{currentIndicator.indicator}</p>
-          <div className="flex gap-6 text-sm">
-            <span>Annual Target: <strong>{currentIndicator.target}</strong></span>
-            <span>Monthly Target: <strong>~{monthlyTarget}</strong></span>
-            <span>YTD Actual: <strong className="text-primary">{ytdTotal}</strong></span>
-          </div>
-        </div>
-      )}
 
-      {/* Monthly table */}
-      <div className="rounded-lg border bg-card overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/50">
-              <th className="table-header text-left p-3">Month</th>
-              <th className="table-header text-right p-3 w-32">Actual</th>
-              <th className="table-header text-left p-3">Remarks</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={row.month} className={`border-b last:border-0 ${i % 2 === 0 ? "" : "bg-muted/10"}`}>
-                <td className="p-3 font-medium">{row.month}</td>
-                <td className="p-3">
+          {/* STEP 2: SELECT MONTH */}
+          <div className="space-y-2">
+            <Label>2. Select Reporting Month</Label>
+            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+              <SelectTrigger>
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                  <SelectValue />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                {MONTHS.map((m) => (
+                  <SelectItem key={m} value={m}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <hr className="my-4" />
+
+          {/* STEP 3: INPUT DATA */}
+          {currentIndicator && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-top-1">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="actual-val">Actual Value</Label>
                   <Input
+                    id="actual-val"
                     type="number"
-                    value={row.actual ?? ""}
-                    onChange={(e) => updateEntry(row.month, "actual", e.target.value)}
-                    className="text-right font-mono w-28 ml-auto"
-                    placeholder="—"
+                    placeholder="Enter number..."
+                    value={currentEntry?.actual ?? ""}
+                    onChange={(e) => handleUpdate("actual", e.target.value)}
+                    className="text-lg font-mono"
                   />
-                </td>
-                <td className="p-3">
+                  <p className="text-[10px] text-muted-foreground">
+                    Monthly Target: ~{Math.round(currentIndicator.target / 12)}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="remarks">Remarks</Label>
                   <Input
-                    value={row.remarks}
-                    onChange={(e) => updateEntry(row.month, "remarks", e.target.value)}
-                    placeholder="Add remarks..."
-                    className="text-sm"
+                    id="remarks"
+                    placeholder="Add notes..."
+                    value={currentEntry?.remarks ?? ""}
+                    onChange={(e) => handleUpdate("remarks", e.target.value)}
                   />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
