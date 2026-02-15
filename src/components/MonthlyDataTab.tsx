@@ -5,9 +5,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Search, CalendarDays, ClipboardEdit, Check, Clock, AlertCircle, Save } from "lucide-react";
+import { Search, CalendarDays, ClipboardEdit, Check, Clock, AlertCircle, Save, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { InputValidator, AuditLogger, DataValidator } from "@/lib/securityUtils";
+import { useAuth } from "@/hooks/useAuth";
 
 interface Props {
   monthlyData: MonthlyEntry[];
@@ -17,6 +18,7 @@ interface Props {
 type SaveStatus = "saved" | "saving" | "pending" | "error";
 
 export default function MonthlyDataTab({ monthlyData, setMonthlyData }: Props) {
+  const { user, profile } = useAuth();
   const [selectedCode, setSelectedCode] = useState(indicators[0].code);
   const [selectedMonth, setSelectedMonth] = useState(MONTHS[0]);
   const [search, setSearch] = useState("");
@@ -70,6 +72,8 @@ export default function MonthlyDataTab({ monthlyData, setMonthlyData }: Props) {
         AuditLogger.logAction("system", "DATA_AUTO_SAVED", "monthly_data", "success", {
           code: selectedCode,
           month: selectedMonth,
+          userId: user?.id,
+          department: profile?.department,
           timestamp: new Date().toISOString(),
         });
 
@@ -216,6 +220,17 @@ export default function MonthlyDataTab({ monthlyData, setMonthlyData }: Props) {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
+      {/* Department Info & Restriction */}
+      {profile && profile.department && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+          <Shield className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div className="text-sm text-blue-900">
+            <p className="font-semibold">Departmental Access</p>
+            <p>You can only enter data for your assigned department: <span className="font-medium text-blue-700">{profile.department}</span></p>
+          </div>
+        </div>
+      )}
+
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -346,6 +361,8 @@ export default function MonthlyDataTab({ monthlyData, setMonthlyData }: Props) {
                       AuditLogger.logAction("system", "DATA_MANUAL_SAVE", "monthly_data", "success", {
                         code: selectedCode,
                         month: selectedMonth,
+                        userId: user?.id,
+                        department: profile?.department,
                         timestamp: new Date().toISOString(),
                       });
                     }, 800);

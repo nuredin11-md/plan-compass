@@ -18,20 +18,14 @@ const DEPARTMENTS = [
   "Health System Strengthening",
 ];
 
-const ROLES = [
-  { value: "admin", label: "Administrator" },
-  { value: "department_head", label: "Department Head" },
-  { value: "data_entry", label: "Data Entry Officer" },
-  { value: "viewer", label: "Viewer" },
-];
-
 export default function Auth() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [department, setDepartment] = useState("");
-  const [role, setRole] = useState("viewer");
+  // Remove role selection from signup - roles must be assigned by admin only
+  const DEFAULT_USER_ROLE = "viewer";
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -61,7 +55,7 @@ export default function Auth() {
         data: {
           display_name: displayName,
           department,
-          role,
+          role: DEFAULT_USER_ROLE, // Always set to viewer - admins must assign roles
         },
       },
     });
@@ -140,18 +134,9 @@ export default function Auth() {
                   </Select>
                 </div>
 
-                <div>
-                  <label className="text-sm font-medium mb-1 block">Role</label>
-                  <Select value={role} onValueChange={setRole}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ROLES.map((r) => (
-                        <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
+                  <p className="font-medium">Role Assignment</p>
+                  <p>Your role will be assigned by an administrator after email verification for security purposes.</p>
                 </div>
               </>
             )}
