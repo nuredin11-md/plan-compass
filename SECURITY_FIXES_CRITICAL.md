@@ -1,5 +1,23 @@
 # 🔒 Critical Security Fixes & Implementation Guide
 
+## ⚠️ IMPORTANT: Multi-Facility Organizational Hierarchy
+
+This system now supports **multi-region, multi-facility deployments**:
+
+```
+Region → Facility → Department → Users
+```
+
+All security policies below must be implemented with this organizational context:
+- **Region-level** isolation (regional health bureaus, states, regions)
+- **Facility-level** isolation (hospitals, health centers, health posts)
+- **Department-level** isolation (programs/services within facilities)
+- **User-level** role-based access control
+
+📖 **Full Details**: See [ORGANIZATIONAL_HIERARCHY_STRUCTURE.md](ORGANIZATIONAL_HIERARCHY_STRUCTURE.md)
+
+---
+
 ## Issues Fixed ✅
 
 ### 1. **Users Selecting Own Role During Signup** ✅ FIXED
@@ -21,6 +39,31 @@
 // Role selection removed from signup form
 // Default role: "viewer"
 // Only administrators can assign roles
+```
+
+**LATEST UPDATE** (Multi-Facility Support):
+```tsx
+// Auth.tsx now includes region and facility selection
+// Signup flow now requires:
+// 1. Region selection (from regions table)
+// 2. Facility selection (dependent on region)
+// 3. Department selection
+// 4. Role is hardcoded to "viewer"
+
+// This ensures proper organizational hierarchy from signup:
+const { error } = await supabase.auth.signUp({
+  email,
+  password,
+  options: {
+    data: {
+      display_name: displayName,
+      region_id: selectedRegion,        // ← NEW
+      facility_id: selectedFacility,    // ← NEW
+      department: department,
+      role: DEFAULT_USER_ROLE // Always "viewer"
+    }
+  }
+});
 ```
 
 ---

@@ -1,5 +1,17 @@
 # Departmental Access Control Implementation
 
+## ⚠️ IMPORTANT UPDATE: Now includes Multi-Facility Organizational Hierarchy
+
+This document covers **department-level** access control. However, for systems managing **multiple regions with multiple facilities**, see [ORGANIZATIONAL_HIERARCHY_STRUCTURE.md](ORGANIZATIONAL_HIERARCHY_STRUCTURE.md) for the complete 4-level architecture:
+
+```
+Region → Facility → Department → Users
+```
+
+The security policies below are **per-department within a facility**. The organizational hierarchy document includes region and facility scoping as well.
+
+---
+
 ## Overview
 
 This document describes the implementation of department-level data access control in Plan Compass. Users can only enter and view data for their assigned department, preventing unauthorized data manipulation across departments.
