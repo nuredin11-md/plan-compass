@@ -15,9 +15,12 @@ export interface MonthlyEntry {
   remarks: string;
 }
 
+// Ethiopian Financial Year: Hamle (July) to Sene (June)
+// Mapped to Gregorian months starting from November
 export const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December"
+  "Hamle (Nov)", "Nehase (Dec)", "Meskerem (Jan)", "Tikimt (Feb)",
+  "Hidar (Mar)", "Tahsas (Apr)", "Tir (May)", "Yekatit (Jun)",
+  "Megabit (Jul)", "Miyazia (Aug)", "Ginbot (Sep)", "Sene (Oct)"
 ];
 
 export const indicators: Indicator[] = [
