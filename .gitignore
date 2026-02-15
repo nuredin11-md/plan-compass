@@ -22,3 +22,41 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# Environment Variables - SECURITY CRITICAL
+.env
+.env.local
+.env.*.local
+.env.backup
+.env.prod
+.env.dev
+
+# Sensitive Files
+*.key
+*.pem
+*.p12
+*.pkcs12
+*.jks
+*.cert
+credentials.json
+secrets.json
+.credentials
+
+# Backup Files
+*.bak
+*.backup
+*~
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Security Audit Reports
+*.audit.json
+
+# Build outputs
+dist/
+build/

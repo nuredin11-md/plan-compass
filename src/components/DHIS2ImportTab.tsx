@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, FileText, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
+import { InputValidator, AuditLogger, DataValidator } from "@/lib/securityUtils";
 
 interface Props {
   monthlyData: MonthlyEntry[];
@@ -32,9 +33,25 @@ export default function DHIS2ImportTab({ monthlyData, setMonthlyData }: Props) {
   const handleFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    
+    // Validate file size (max 10MB)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      toast.error("File size exceeds 10MB limit");
+      AuditLogger.logSecurityEvent("FILE_UPLOAD_REJECTED", "file_size_exceeded", { size: file.size });
+      return;
+    }
+
     setFileName(file.name);
 
     const ext = file.name.split(".").pop()?.toLowerCase();
+    
+    // Validate file extension
+    if (!["csv", "xlsx", "xls"].includes(ext || "")) {
+      toast.error("Please upload a CSV or Excel (.xlsx) file");
+      AuditLogger.logSecurityEvent("FILE_UPLOAD_REJECTED", "invalid_file_type", { extension: ext });
+      return;
+    }
 
     if (ext === "csv") {
       Papa.parse<ParsedRow>(file, {
@@ -45,24 +62,38 @@ export default function DHIS2ImportTab({ monthlyData, setMonthlyData }: Props) {
           setAvailableColumns(results.meta.fields || []);
           setStep("map");
           toast.success(`Parsed ${results.data.length} rows from CSV`);
+          AuditLogger.logAction("system", "FILE_IMPORT_PARSED", "csv_file", "success", { 
+            rowCount: results.data.length,
+            fileName: file.name
+          });
         },
-        error: () => toast.error("Failed to parse CSV file"),
+        error: (error) => {
+          toast.error("Failed to parse CSV file");
+          AuditLogger.logSecurityEvent("FILE_PARSE_ERROR", "csv_parse", { error: error?.message || "unknown" });
+        }
       });
     } else if (ext === "xlsx" || ext === "xls") {
       const reader = new FileReader();
       reader.onload = (evt) => {
-        const wb = XLSX.read(evt.target?.result, { type: "binary" });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const data = XLSX.utils.sheet_to_json<ParsedRow>(ws);
-        const cols = data.length > 0 ? Object.keys(data[0]) : [];
-        setParsedData(data);
-        setAvailableColumns(cols);
-        setStep("map");
-        toast.success(`Parsed ${data.length} rows from Excel`);
+        try {
+          const wb = XLSX.read(evt.target?.result, { type: "binary" });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const data = XLSX.utils.sheet_to_json<ParsedRow>(ws);
+          const cols = data.length > 0 ? Object.keys(data[0]) : [];
+          setParsedData(data);
+          setAvailableColumns(cols);
+          setStep("map");
+          toast.success(`Parsed ${data.length} rows from Excel`);
+          AuditLogger.logAction("system", "FILE_IMPORT_PARSED", "excel_file", "success", { 
+            rowCount: data.length,
+            fileName: file.name
+          });
+        } catch (error) {
+          toast.error("Failed to parse Excel file");
+          AuditLogger.logSecurityEvent("FILE_PARSE_ERROR", "excel_parse", { error: String(error) });
+        }
       };
       reader.readAsBinaryString(file);
-    } else {
-      toast.error("Please upload a CSV or Excel (.xlsx) file");
     }
   }, []);
 
@@ -100,20 +131,57 @@ export default function DHIS2ImportTab({ monthlyData, setMonthlyData }: Props) {
       return;
     }
 
+    // Validate imported data before applying
+    const dataToImport = matchedRows
+      .filter((r) => r.matched && r.matchedCode)
+      .map((r) => ({
+        code: r.matchedCode!,
+        month: mappedMonth,
+        actual: r.actual,
+        remarks: r.remarks,
+      } as MonthlyEntry));
+
+    // Validate each entry
+    const validationErrors: string[] = [];
+    dataToImport.forEach((entry) => {
+      const { valid, errors } = DataValidator.validateMonthlyEntry(entry);
+      if (!valid) {
+        validationErrors.push(...errors);
+      }
+    });
+
+    if (validationErrors.length > 0) {
+      toast.error(`Validation failed: ${validationErrors[0]}`);
+      AuditLogger.logSecurityEvent("IMPORT_VALIDATION_FAILED", "data_validation", { 
+        errors: validationErrors,
+        count: validationErrors.length 
+      });
+      return;
+    }
+
+    // Perform the import
     setMonthlyData((prev) => {
       const copy = [...prev];
-      matchedRows
-        .filter((r) => r.matched && r.matchedCode)
-        .forEach((r) => {
-          const idx = copy.findIndex((e) => e.code === r.matchedCode && e.month === mappedMonth);
-          if (idx >= 0) {
-            copy[idx] = { ...copy[idx], actual: r.actual, remarks: r.remarks || copy[idx].remarks };
-          }
-        });
+      dataToImport.forEach((entry) => {
+        const idx = copy.findIndex((e) => e.code === entry.code && e.month === entry.month);
+        if (idx >= 0) {
+          copy[idx] = { ...copy[idx], actual: entry.actual, remarks: entry.remarks || copy[idx].remarks };
+        } else {
+          copy.push(entry);
+        }
+      });
       return copy;
     });
 
     toast.success(`Imported ${matchCount} indicators for ${mappedMonth}`);
+    
+    // Log successful import
+    AuditLogger.logAction("system", "DATA_IMPORT", "monthly_indicators", "success", { 
+      count: matchCount,
+      month: mappedMonth,
+      source: "file_upload"
+    });
+
     setStep("done");
   };
 

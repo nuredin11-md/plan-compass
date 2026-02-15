@@ -40,7 +40,7 @@ export const indicators: Indicator[] = [
   // Maternal & Child Health – Delivery
   { code: "MCH_DEL_01", programArea: "Maternal & Child Health", subProgram: "Delivery Services", indicator: "Facility-based deliveries (skilled attendance)", unit: "#", baseline: 180, target: 300 },
   { code: "MCH_DEL_02", programArea: "Maternal & Child Health", subProgram: "Delivery Services", indicator: "Caesarean section rate", unit: "%", baseline: 18, target: 15 },
-  { code: "MCH_DEL_03", programArea: "Maternal & Child Health", subProgram: "Delivery Services", indicator: "Active management of third stage of labor (AMTSL) compliance", unit: "%", baseline: 75, target: 95 },
+  { code: "MCH_DEL_03", programArea: "Maternal & Child Health", subProgram: "Delivery Services", indicator: "percentage of birth notification ", unit: "%", baseline: 98, target: 100 },
   { code: "MCH_DEL_04", programArea: "Maternal & Child Health", subProgram: "Delivery Services", indicator: "Neonatal deaths within 24 hours of birth", unit: "#", baseline: 8, target: 3 },
 
   // Maternal & Child Health – PNC
