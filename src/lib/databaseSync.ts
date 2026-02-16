@@ -1,4 +1,4 @@
-import type { MonthlyEntry, Indicator } from "@/data/hospitalIndicators";
+import { MONTHS, type MonthlyEntry, type Indicator } from "@/data/hospitalIndicators";
 import type { MonthlyData } from "@/hooks/useDatabase";
 
 /**
@@ -12,9 +12,9 @@ export function convertMonthlyDataToEntries(
     const indicator = indicators.find((ind) => ind.code === record.indicator_code);
     return {
       code: record.indicator_code,
-      month: record.month,
+      month: MONTHS[record.month - 1] || String(record.month),
       actual: record.actual,
-      remarks: record.remarks,
+      remarks: record.remarks ?? "",
       target: indicator?.target || 0,
       baseline: indicator?.baseline || 0,
     };
@@ -29,11 +29,12 @@ export function convertEntryToMonthlyData(
   year: number,
   userId: string | null
 ): Omit<MonthlyData, "id" | "created_at" | "updated_at"> {
+  const monthIndex = MONTHS.indexOf(entry.month);
   return {
     year,
-    month: entry.month,
+    month: monthIndex >= 0 ? monthIndex + 1 : 1,
     indicator_code: entry.code,
-    actual: entry.actual,
+    actual: entry.actual ?? 0,
     remarks: entry.remarks,
     entered_by: userId,
   };
