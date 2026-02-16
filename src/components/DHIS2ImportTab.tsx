@@ -38,7 +38,7 @@ export default function DHIS2ImportTab({ monthlyData, setMonthlyData }: Props) {
     const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
       toast.error("File size exceeds 10MB limit");
-      AuditLogger.logSecurityEvent("FILE_UPLOAD_REJECTED", "file_size_exceeded", { size: file.size });
+      AuditLogger.logSecurityEvent("system", "FILE_UPLOAD_REJECTED", `File size ${file.size} exceeds limit`);
       return;
     }
 
@@ -49,7 +49,7 @@ export default function DHIS2ImportTab({ monthlyData, setMonthlyData }: Props) {
     // Validate file extension
     if (!["csv", "xlsx", "xls"].includes(ext || "")) {
       toast.error("Please upload a CSV or Excel (.xlsx) file");
-      AuditLogger.logSecurityEvent("FILE_UPLOAD_REJECTED", "invalid_file_type", { extension: ext });
+      AuditLogger.logSecurityEvent("system", "FILE_UPLOAD_REJECTED", `Invalid file type: ${ext}`);
       return;
     }
 
@@ -69,7 +69,7 @@ export default function DHIS2ImportTab({ monthlyData, setMonthlyData }: Props) {
         },
         error: (error) => {
           toast.error("Failed to parse CSV file");
-          AuditLogger.logSecurityEvent("FILE_PARSE_ERROR", "csv_parse", { error: error?.message || "unknown" });
+          AuditLogger.logSecurityEvent("system", "FILE_PARSE_ERROR", `CSV parse error: ${error?.message || "unknown"}`);
         }
       });
     } else if (ext === "xlsx" || ext === "xls") {
@@ -90,7 +90,7 @@ export default function DHIS2ImportTab({ monthlyData, setMonthlyData }: Props) {
           });
         } catch (error) {
           toast.error("Failed to parse Excel file");
-          AuditLogger.logSecurityEvent("FILE_PARSE_ERROR", "excel_parse", { error: String(error) });
+          AuditLogger.logSecurityEvent("system", "FILE_PARSE_ERROR", `Excel parse error: ${String(error)}`);
         }
       };
       reader.readAsBinaryString(file);
@@ -152,10 +152,7 @@ export default function DHIS2ImportTab({ monthlyData, setMonthlyData }: Props) {
 
     if (validationErrors.length > 0) {
       toast.error(`Validation failed: ${validationErrors[0]}`);
-      AuditLogger.logSecurityEvent("IMPORT_VALIDATION_FAILED", "data_validation", { 
-        errors: validationErrors,
-        count: validationErrors.length 
-      });
+      AuditLogger.logSecurityEvent("system", "IMPORT_VALIDATION_FAILED", `${validationErrors.length} validation errors: ${validationErrors[0]}`);
       return;
     }
 
