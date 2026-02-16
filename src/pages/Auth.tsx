@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,41 +24,11 @@ export default function Auth() {
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   
-  // Organizational hierarchy fields (NEW)
-  const [regions, setRegions] = useState<any[]>([]);
-  const [facilities, setFacilities] = useState<any[]>([]);
-  const [selectedRegion, setSelectedRegion] = useState("");
-  const [selectedFacility, setSelectedFacility] = useState("");
   const [department, setDepartment] = useState("");
   
   // Remove role selection from signup - roles must be assigned by admin only
   const DEFAULT_USER_ROLE = "viewer";
   const [loading, setLoading] = useState(false);
-
-  // Fetch regions on component mount
-  useEffect(() => {
-    const fetchRegions = async () => {
-      const { data } = await supabase.from("regions").select("*").eq("status", "active");
-      setRegions(data || []);
-    };
-    fetchRegions();
-  }, []);
-
-  // Fetch facilities when region is selected
-  useEffect(() => {
-    const fetchFacilities = async () => {
-      if (selectedRegion) {
-        const { data } = await supabase
-          .from("facilities")
-          .select("*")
-          .eq("region_id", selectedRegion)
-          .eq("status", "active");
-        setFacilities(data || []);
-        setSelectedFacility(""); // Reset facility when region changes
-      }
-    };
-    fetchFacilities();
-  }, [selectedRegion]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,15 +45,6 @@ export default function Auth() {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validation
-    if (!selectedRegion) {
-      toast.error("Please select a region");
-      return;
-    }
-    if (!selectedFacility) {
-      toast.error("Please select a facility");
-      return;
-    }
     if (!department) {
       toast.error("Please select a department");
       return;
@@ -102,10 +63,8 @@ export default function Auth() {
         emailRedirectTo: window.location.origin,
         data: {
           display_name: displayName,
-          region_id: selectedRegion,        // NEW: Multi-facility support
-          facility_id: selectedFacility,    // NEW: Multi-facility support
           department,
-          role: DEFAULT_USER_ROLE, // Always set to viewer - admins must assign roles
+          role: DEFAULT_USER_ROLE,
         },
       },
     });
@@ -170,40 +129,6 @@ export default function Auth() {
 
             {mode === "signup" && (
               <>
-                {/* REGION SELECTOR (NEW) */}
-                <div>
-                  <label className="text-sm font-medium mb-1 block">Region</label>
-                  <Select value={selectedRegion} onValueChange={setSelectedRegion}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select your region" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {regions.map((region: any) => (
-                        <SelectItem key={region.id} value={region.id}>
-                          {region.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* FACILITY SELECTOR (NEW) */}
-                <div>
-                  <label className="text-sm font-medium mb-1 block">Facility / Health Center</label>
-                  <Select value={selectedFacility} onValueChange={setSelectedFacility} disabled={!selectedRegion}>
-                    <SelectTrigger>
-                      <SelectValue placeholder={selectedRegion ? "Select your facility" : "Select region first"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {facilities.map((facility: any) => (
-                        <SelectItem key={facility.id} value={facility.id}>
-                          {facility.name} ({facility.facility_type})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 <div>
                   <label className="text-sm font-medium mb-1 block">Department</label>
                   <Select value={department} onValueChange={setDepartment}>
@@ -218,7 +143,7 @@ export default function Auth() {
                   </Select>
                 </div>
 
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
+                <div className="bg-muted border border-border rounded-lg p-3 text-sm text-muted-foreground">
                   <p className="font-medium">Role Assignment</p>
                   <p>Your role will be assigned by an administrator after email verification for security purposes.</p>
                 </div>
