@@ -9,16 +9,19 @@ import { Search, CalendarDays, ClipboardEdit, Check, Clock, AlertCircle, Save, S
 import { toast } from "sonner";
 import { InputValidator, AuditLogger, DataValidator } from "@/lib/securityUtils";
 import { useAuth } from "@/hooks/useAuth";
+import { useDatabase } from "@/hooks/useDatabase";
 
 interface Props {
   monthlyData: MonthlyEntry[];
   setMonthlyData: React.Dispatch<React.SetStateAction<MonthlyEntry[]>>;
+  selectedYear?: number;
 }
 
 type SaveStatus = "saved" | "saving" | "pending" | "error";
 
-export default function MonthlyDataTab({ monthlyData, setMonthlyData }: Props) {
+export default function MonthlyDataTab({ monthlyData, setMonthlyData, selectedYear = new Date().getFullYear() }: Props) {
   const { user, profile } = useAuth();
+  const { upsertMonthlyData } = useDatabase();
   const [selectedCode, setSelectedCode] = useState(indicators[0].code);
   const [selectedMonth, setSelectedMonth] = useState(MONTHS[0]);
   const [search, setSearch] = useState("");
@@ -64,22 +67,44 @@ export default function MonthlyDataTab({ monthlyData, setMonthlyData }: Props) {
     setSaveStatus("saving");
 
     // Debounce save operation (2 seconds delay)
-    saveTimeoutRef.current = setTimeout(() => {
+    saveTimeoutRef.current = setTimeout(async () => {
       try {
+        // Find the current entry to save
+        const entryToSave = monthlyData.find(
+          (e) => e.code === selectedCode && e.month === selectedMonth
+        );
+
+        if (entryToSave) {
+          // Save to database
+          const actual = entryToSave.actual ?? 0;
+          const remarks = entryToSave.remarks ?? "";
+          
+          await upsertMonthlyData(
+            selectedYear,
+            selectedMonth,
+            selectedCode,
+            actual,
+            remarks,
+            user?.id || null
+          );
+
+          AuditLogger.logAction("system", "DATA_AUTO_SAVED", "monthly_data", "success", {
+            code: selectedCode,
+            month: selectedMonth,
+            actual,
+            remarks,
+            userId: user?.id,
+            department: profile?.department,
+            timestamp: new Date().toISOString(),
+          });
+        }
+
         setSaveStatus("saved");
         setLastSavedTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-        
-        AuditLogger.logAction("system", "DATA_AUTO_SAVED", "monthly_data", "success", {
-          code: selectedCode,
-          month: selectedMonth,
-          userId: user?.id,
-          department: profile?.department,
-          timestamp: new Date().toISOString(),
-        });
-
         toast.success("Data saved", { duration: 2000 });
       } catch (error) {
         setSaveStatus("error");
+        console.error("Save error:", error);
         toast.error("Failed to save data");
         AuditLogger.logSecurityEvent("system", "AUTO_SAVE_FAILED", String(error) || "unknown_error");
       }
@@ -90,7 +115,7 @@ export default function MonthlyDataTab({ monthlyData, setMonthlyData }: Props) {
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [saveStatus, selectedCode, selectedMonth]);
+  }, [saveStatus, selectedCode, selectedMonth, monthlyData, selectedYear, user?.id, profile?.department, upsertMonthlyData]);
 
   // 3. Centralized update function with auto-save
   const handleUpdate = (field: "actual" | "remarks", value: string) => {
@@ -352,9 +377,27 @@ export default function MonthlyDataTab({ monthlyData, setMonthlyData }: Props) {
               {/* Action Buttons */}
               <div className="flex gap-3 mt-6 pt-4 border-t">
                 <Button
-                  onClick={() => {
+                  onClick={async () => {
                     setSaveStatus("saving");
-                    setTimeout(() => {
+                    try {
+                      const entryToSave = monthlyData.find(
+                        (e) => e.code === selectedCode && e.month === selectedMonth
+                      );
+                      
+                      if (entryToSave) {
+                        const actual = entryToSave.actual ?? 0;
+                        const remarks = entryToSave.remarks ?? "";
+                        
+                        await upsertMonthlyData(
+                          selectedYear,
+                          selectedMonth,
+                          selectedCode,
+                          actual,
+                          remarks,
+                          user?.id || null
+                        );
+                      }
+
                       setSaveStatus("saved");
                       setLastSavedTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
                       toast.success("Data saved manually");
@@ -365,7 +408,12 @@ export default function MonthlyDataTab({ monthlyData, setMonthlyData }: Props) {
                         department: profile?.department,
                         timestamp: new Date().toISOString(),
                       });
-                    }, 800);
+                    } catch (error) {
+                      setSaveStatus("error");
+                      console.error("Manual save error:", error);
+                      toast.error("Failed to save data");
+                      AuditLogger.logSecurityEvent("system", "MANUAL_SAVE_FAILED", String(error) || "unknown_error");
+                    }
                   }}
                   variant="outline"
                   className="gap-2"

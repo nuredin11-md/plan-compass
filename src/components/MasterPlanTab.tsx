@@ -4,6 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Search, Pencil, Save, X } from "lucide-react";
+import { useDatabase } from "@/hooks/useDatabase";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
 
 interface Props {
   monthlyData: MonthlyEntry[];
@@ -17,6 +20,8 @@ const StatusBadge = ({ percent }: { percent: number }) => {
 };
 
 export default function MasterPlanTab({ monthlyData, selectedYear }: Props) {
+  const { user } = useAuth();
+  const { upsertAnnualPlan } = useDatabase();
   const [search, setSearch] = useState("");
   const [filterArea, setFilterArea] = useState("all");
   const [editingCode, setEditingCode] = useState<string | null>(null);
@@ -52,18 +57,45 @@ export default function MasterPlanTab({ monthlyData, selectedYear }: Props) {
     setEditBaseline(String(ind.baseline));
   };
 
-  const saveEdit = (code: string) => {
-    setYearOverrides((prev) => ({
-      ...prev,
-      [selectedYear]: {
-        ...(prev[selectedYear] || {}),
-        [code]: {
-          target: editTarget === "" ? 0 : Number(editTarget),
-          baseline: editBaseline === "" ? 0 : Number(editBaseline),
+  const saveEdit = async (code: string) => {
+    try {
+      const indicator = defaultIndicators.find((ind) => ind.code === code);
+      if (!indicator) return;
+
+      const newTarget = editTarget === "" ? 0 : Number(editTarget);
+      const newBaseline = editBaseline === "" ? 0 : Number(editBaseline);
+
+      // Save to database
+      await upsertAnnualPlan(
+        selectedYear,
+        code,
+        indicator.programArea,
+        indicator.subProgram,
+        indicator.indicator,
+        indicator.unit,
+        newBaseline,
+        newTarget,
+        user?.id || null
+      );
+
+      // Update local state
+      setYearOverrides((prev) => ({
+        ...prev,
+        [selectedYear]: {
+          ...(prev[selectedYear] || {}),
+          [code]: {
+            target: newTarget,
+            baseline: newBaseline,
+          },
         },
-      },
-    }));
-    setEditingCode(null);
+      }));
+
+      setEditingCode(null);
+      toast.success("Plan saved successfully");
+    } catch (error) {
+      console.error("Error saving plan:", error);
+      toast.error("Failed to save plan");
+    }
   };
 
   return (
@@ -152,7 +184,12 @@ export default function MasterPlanTab({ monthlyData, selectedYear }: Props) {
                   <td className="p-3 text-center">
                     {isEditing ? (
                       <div className="flex items-center justify-center gap-1">
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => saveEdit(ind.code)}>
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          className="h-7 w-7" 
+                          onClick={() => saveEdit(ind.code)}
+                        >
                           <Save className="h-3.5 w-3.5 text-primary" />
                         </Button>
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingCode(null)}>

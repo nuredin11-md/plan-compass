@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { generateSampleMonthlyData, type MonthlyEntry } from "@/data/hospitalIndicators";
+import { generateSampleMonthlyData, indicators, type MonthlyEntry } from "@/data/hospitalIndicators";
 import { useAuth } from "@/hooks/useAuth";
+import { useDatabase } from "@/hooks/useDatabase";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import MasterPlanTab from "@/components/MasterPlanTab";
@@ -19,18 +20,20 @@ import ExportButton from "@/components/ExportButton";
 import AboutUsTab from "@/components/AboutUsTab";
 import { BackupManager } from "@/lib/backupUtils";
 import { AuditLogger } from "@/lib/securityUtils";
+import { mergeMonthlyData } from "@/lib/databaseSync";
 import { LogOut, User } from "lucide-react";
+import { toast } from "sonner";
 
 const Index = () => {
   const { user, profile, role, signOut } = useAuth();
+  const { fetchMonthlyData } = useDatabase();
   const currentCalendarYear = new Date().getFullYear();
 
   const [selectedYear, setSelectedYear] = useState(currentCalendarYear);
   const [compareYear, setCompareYear] = useState<number | null>(null);
-  const [yearlyData, setYearlyData] = useState<Record<number, MonthlyEntry[]>>(() => ({
-    [currentCalendarYear]: generateSampleMonthlyData(),
-  }));
+  const [yearlyData, setYearlyData] = useState<Record<number, MonthlyEntry[]>>({});
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [isLoadingData, setIsLoadingData] = useState(true);
 
   const monthlyData = yearlyData[selectedYear] || [];
   const compareData = compareYear ? yearlyData[compareYear] : undefined;
@@ -44,19 +47,67 @@ const Index = () => {
 
   const availableYears = Object.keys(yearlyData).map(Number).sort((a, b) => b - a);
 
-  const addYear = (year: number) => {
-    if (!yearlyData[year]) {
-      setYearlyData((prev) => ({ ...prev, [year]: generateSampleMonthlyData() }));
+  // Load data from database for a specific year
+  const loadYearData = useCallback(
+    async (year: number) => {
+      try {
+        const dbData = await fetchMonthlyData(year);
+        const sampleData = generateSampleMonthlyData();
+        
+        // Merge database data with sample data structure
+        const mergedData = mergeMonthlyData(sampleData, dbData);
+        
+        setYearlyData((prev) => ({
+          ...prev,
+          [year]: mergedData,
+        }));
+
+        AuditLogger.logAction(
+          user?.id || "system",
+          "DATA_LOADED",
+          "monthly_data",
+          "success",
+          {
+            year,
+            recordCount: dbData.length,
+            timestamp: new Date().toISOString(),
+          }
+        );
+      } catch (error) {
+        console.error(`Failed to load data for year ${year}:`, error);
+        // Fall back to sample data if database load fails
+        setYearlyData((prev) => ({
+          ...prev,
+          [year]: generateSampleMonthlyData(),
+        }));
+        toast.error(`Failed to load data for ${year}`);
+      }
+    },
+    [fetchMonthlyData, user?.id]
+  );
+
+  // Load current year and previous year on mount
+  useEffect(() => {
+    const loadInitialData = async () => {
+      setIsLoadingData(true);
+      try {
+        await loadYearData(currentCalendarYear);
+        await loadYearData(currentCalendarYear - 1);
+      } finally {
+        setIsLoadingData(false);
+      }
+    };
+    loadInitialData();
+  }, [currentCalendarYear, loadYearData]);
+
+  const handleYearChange = async (newYear: number) => {
+    setSelectedYear(newYear);
+    
+    // Load data for the new year if not already loaded
+    if (!yearlyData[newYear]) {
+      await loadYearData(newYear);
     }
   };
-
-  useEffect(() => {
-    if (!yearlyData[currentCalendarYear - 1]) {
-      addYear(currentCalendarYear - 1);
-    }
-  }, []);
-
-  // Set up auto-backup scheduling (every 30 minutes)
   useEffect(() => {
     const autoBackupInterval = setInterval(() => {
       try {
@@ -113,7 +164,7 @@ const Index = () => {
       case "masterplan":
         return <MasterPlanTab monthlyData={monthlyData} selectedYear={selectedYear} />;
       case "monthly":
-        return <MonthlyDataTab monthlyData={monthlyData} setMonthlyData={setMonthlyData} />;
+        return <MonthlyDataTab monthlyData={monthlyData} setMonthlyData={setMonthlyData} selectedYear={selectedYear} />;
       case "import":
         return <DHIS2ImportTab monthlyData={monthlyData} setMonthlyData={setMonthlyData} />;
       case "analysis":
@@ -178,7 +229,7 @@ const Index = () => {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(Number(v))}>
+                <Select value={String(selectedYear)} onValueChange={(v) => handleYearChange(Number(v))}>
                   <SelectTrigger className="w-[140px] bg-white/10 border-white/20 text-primary-foreground hover:bg-white/15 transition-colors rounded-lg backdrop-blur-md">
                     <SelectValue />
                   </SelectTrigger>
