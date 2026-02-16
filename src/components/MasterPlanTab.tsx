@@ -11,6 +11,7 @@ import { toast } from "sonner";
 interface Props {
   monthlyData: MonthlyEntry[];
   selectedYear: number;
+  previousYearData: MonthlyEntry[];
 }
 
 const StatusBadge = ({ percent }: { percent: number }) => {
@@ -19,7 +20,7 @@ const StatusBadge = ({ percent }: { percent: number }) => {
   return <span className={`status-badge-${status}`}>{label}</span>;
 };
 
-export default function MasterPlanTab({ monthlyData, selectedYear }: Props) {
+export default function MasterPlanTab({ monthlyData, selectedYear, previousYearData }: Props) {
   const { user } = useAuth();
   const { upsertAnnualPlan } = useDatabase();
   const [search, setSearch] = useState("");
@@ -54,7 +55,9 @@ export default function MasterPlanTab({ monthlyData, selectedYear }: Props) {
   const startEdit = (ind: Indicator) => {
     setEditingCode(ind.code);
     setEditTarget(String(ind.target));
-    setEditBaseline(String(ind.baseline));
+    // Auto-fill baseline from previous year's actual performance
+    const prevYearActual = getActualYTD(ind.code, previousYearData);
+    setEditBaseline(prevYearActual > 0 ? String(prevYearActual) : String(ind.baseline));
   };
 
   const saveEdit = async (code: string) => {
@@ -125,7 +128,8 @@ export default function MasterPlanTab({ monthlyData, selectedYear }: Props) {
       </div>
 
       <p className="text-sm text-muted-foreground">
-        Showing data for <strong>{selectedYear}</strong>. Click the edit icon to update targets and baselines for this year.
+        Showing data for <strong>{selectedYear}</strong>. Click the edit icon to update targets and baselines.
+        Baseline auto-fills from <strong>{selectedYear - 1}</strong> actual performance when editing.
       </p>
 
       {/* Table */}
