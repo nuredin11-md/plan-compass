@@ -98,6 +98,32 @@ export default function AnalysisTab({ monthlyData }: Props) {
   const top5 = allPerformers.slice(0, 5);
   const bottom5 = [...allPerformers].reverse().slice(0, 5);
 
+  // Department-level summary
+  const deptSummary = useMemo(() => {
+    return areas.map((area) => {
+      const areaInds = indicators.filter((i) => i.programArea === area);
+      let green = 0, yellow = 0, red = 0;
+      areaInds.forEach((ind) => {
+        const actual = getActualYTD(ind.code, monthlyData);
+        const percent = ind.target === 0 ? 0 : Math.round((actual / ind.target) * 100);
+        const s = getStatus(percent);
+        if (s === "green") green++;
+        else if (s === "yellow") yellow++;
+        else red++;
+      });
+      const total = areaInds.length;
+      return {
+        area,
+        total,
+        onTrack: green,
+        atRisk: yellow,
+        offTrack: red,
+        onTrackPct: total > 0 ? Math.round((green / total) * 100) : 0,
+        offTrackPct: total > 0 ? Math.round((red / total) * 100) : 0,
+      };
+    });
+  }, [monthlyData]);
+
   return (
     <div className="space-y-6">
       <div className="flex gap-3">
@@ -163,7 +189,40 @@ export default function AnalysisTab({ monthlyData }: Props) {
                 <Area type="monotone" dataKey="Actual" stroke="hsl(199, 89%, 38%)" fill="hsl(199, 89%, 38%)" fillOpacity={0.2} strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
-          </div>
+      </div>
+
+      {/* Department Summary Table */}
+      <div className="rounded-lg border bg-card p-5">
+        <h3 className="font-semibold mb-4">Department-Level Summary</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="text-left p-3 font-medium">Department / Program Area</th>
+                <th className="text-center p-3 font-medium">Total Indicators</th>
+                <th className="text-center p-3 font-medium">On Track (≥90%)</th>
+                <th className="text-center p-3 font-medium">At Risk (70–89%)</th>
+                <th className="text-center p-3 font-medium">Off Track (&lt;70%)</th>
+                <th className="text-center p-3 font-medium">On Track %</th>
+                <th className="text-center p-3 font-medium">Off Track %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deptSummary.map((d, i) => (
+                <tr key={d.area} className={`border-b last:border-0 hover:bg-muted/30 transition-colors ${i % 2 === 0 ? "" : "bg-muted/10"}`}>
+                  <td className="p-3 font-medium">{d.area}</td>
+                  <td className="p-3 text-center font-mono">{d.total}</td>
+                  <td className="p-3 text-center"><span className="status-badge-green">{d.onTrack}</span></td>
+                  <td className="p-3 text-center"><span className="status-badge-yellow">{d.atRisk}</span></td>
+                  <td className="p-3 text-center"><span className="status-badge-red">{d.offTrack}</span></td>
+                  <td className="p-3 text-center font-mono font-semibold">{d.onTrackPct}%</td>
+                  <td className="p-3 text-center font-mono font-semibold">{d.offTrackPct}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
         </div>
       </div>
 
