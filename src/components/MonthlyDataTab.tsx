@@ -81,7 +81,7 @@ export default function MonthlyDataTab({ monthlyData, setMonthlyData, selectedYe
           
           await upsertMonthlyData(
             selectedYear,
-            selectedMonth,
+            MONTHS.indexOf(selectedMonth) + 1,
             selectedCode,
             actual,
             remarks,
@@ -390,7 +390,7 @@ export default function MonthlyDataTab({ monthlyData, setMonthlyData, selectedYe
                         
                         await upsertMonthlyData(
                           selectedYear,
-                          selectedMonth,
+                          MONTHS.indexOf(selectedMonth) + 1,
                           selectedCode,
                           actual,
                           remarks,
