@@ -162,7 +162,7 @@ const Index = () => {
       case "dashboard":
         return <DashboardTab monthlyData={monthlyData} />;
       case "masterplan":
-        return <MasterPlanTab monthlyData={monthlyData} selectedYear={selectedYear} />;
+        return <MasterPlanTab monthlyData={monthlyData} selectedYear={selectedYear} previousYearData={yearlyData[selectedYear - 1] || []} />;
       case "monthly":
         return <MonthlyDataTab monthlyData={monthlyData} setMonthlyData={setMonthlyData} selectedYear={selectedYear} />;
       case "import":
