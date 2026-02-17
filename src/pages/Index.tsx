@@ -18,6 +18,7 @@ import BackupRecoveryTab from "@/components/BackupRecoveryTab";
 import YearComparisonTab from "@/components/YearComparisonTab";
 import ExportButton from "@/components/ExportButton";
 import AboutUsTab from "@/components/AboutUsTab";
+import WorkspaceTab from "@/components/WorkspaceTab";
 import { BackupManager } from "@/lib/backupUtils";
 import { AuditLogger } from "@/lib/securityUtils";
 import { mergeMonthlyData } from "@/lib/databaseSync";
@@ -161,6 +162,8 @@ const Index = () => {
     switch (activeTab) {
       case "dashboard":
         return <DashboardTab monthlyData={monthlyData} />;
+      case "workspace":
+        return <WorkspaceTab monthlyData={monthlyData} />;
       case "masterplan":
         return <MasterPlanTab monthlyData={monthlyData} selectedYear={selectedYear} previousYearData={yearlyData[selectedYear - 1] || []} />;
       case "monthly":
@@ -243,7 +246,7 @@ const Index = () => {
                   </SelectContent>
                 </Select>
 
-                {(activeTab === "masterplan" || activeTab === "monthly") && (
+                {(activeTab === "masterplan" || activeTab === "monthly" || activeTab === "workspace") && (
                   <ExportButton monthlyData={monthlyData} type={activeTab === "masterplan" ? "masterplan" : "monthly"} />
                 )}
 

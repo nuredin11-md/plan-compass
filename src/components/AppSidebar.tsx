@@ -12,6 +12,7 @@ import {
   Zap,
   HardDrive,
   Info,
+  LayoutDashboard,
 } from "lucide-react";
 import {
   Sidebar,
@@ -27,6 +28,7 @@ import {
 
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3, color: "text-blue-500" },
+  { id: "workspace", label: "Analytics Workspace", icon: LayoutDashboard, color: "text-teal-500" },
   { id: "masterplan", label: "Master Plan", icon: ClipboardList, color: "text-purple-500" },
   { id: "monthly", label: "Monthly Entry", icon: CalendarDays, color: "text-amber-500" },
   { id: "import", label: "DHIS2 Import", icon: Upload, color: "text-green-500" },
