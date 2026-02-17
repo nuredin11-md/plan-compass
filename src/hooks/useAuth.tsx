@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
@@ -28,29 +28,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const initializedRef = useRef(false);
+  const fetchingProfileRef = useRef(false);
 
   const fetchProfile = async (userId: string) => {
-    const { data: profileData } = await supabase
-      .from("profiles")
-      .select("display_name, department")
-      .eq("user_id", userId)
-      .single();
+    // Prevent concurrent profile fetches
+    if (fetchingProfileRef.current) return;
+    fetchingProfileRef.current = true;
 
-    const { data: roleData } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId)
-      .single();
+    try {
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("display_name, department")
+        .eq("user_id", userId)
+        .single();
 
-    setProfile(profileData);
-    setRole(roleData?.role ?? "viewer");
+      const { data: roleData } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .single();
+
+      setProfile(profileData);
+      setRole(roleData?.role ?? "viewer");
+    } catch (err) {
+      console.error("Error fetching profile:", err);
+    } finally {
+      fetchingProfileRef.current = false;
+    }
   };
 
   useEffect(() => {
+    // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
+        // Only process meaningful events, skip token refreshes after init
+        if (initializedRef.current && event === "TOKEN_REFRESHED") {
+          return;
+        }
+
         const currentUser = session?.user ?? null;
         setUser(currentUser);
+
         if (currentUser) {
           // Use setTimeout to avoid Supabase auth deadlock
           setTimeout(() => fetchProfile(currentUser.id), 0);
@@ -62,13 +81,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
+    // Then check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      if (currentUser) {
-        fetchProfile(currentUser.id);
+      // Only set if not already initialized by onAuthStateChange
+      if (!initializedRef.current) {
+        initializedRef.current = true;
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+        if (currentUser) {
+          fetchProfile(currentUser.id);
+        }
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
