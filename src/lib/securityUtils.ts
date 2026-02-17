@@ -243,6 +243,8 @@ export interface AuditLog {
 }
 
 export class AuditLogger {
+  private static readonly isDevelopment = import.meta.env.DEV;
+
   /**
    * Log user actions for compliance and troubleshooting
    */
@@ -256,11 +258,11 @@ export class AuditLogger {
       status,
     };
 
-    // Store in IndexedDB for persistence (in production)
     this.storeAuditLog(log);
 
-    // Console log for development
-    console.log(`[AUDIT] ${action} on ${resource}:`, log);
+    if (this.isDevelopment) {
+      console.log(`[AUDIT] ${action} on ${resource}:`, log);
+    }
   }
 
   /**
@@ -277,7 +279,10 @@ export class AuditLogger {
     };
 
     this.storeAuditLog(log);
-    console.warn(`[SECURITY] ${eventType}:`, message);
+
+    if (this.isDevelopment) {
+      console.warn(`[SECURITY] ${eventType}:`, message);
+    }
   }
 
   /**

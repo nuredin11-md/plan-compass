@@ -70,7 +70,7 @@ export class BackupManager {
 
       AuditLogger.logAction(userId, "CREATE_BACKUP", `backup_${backupId}`, "success", { description });
 
-      console.log(`[BACKUP] Created backup ${backupId} for user ${userId}`);
+      if (import.meta.env.DEV) console.log(`[BACKUP] Created backup ${backupId} for user ${userId}`);
       return { success: true, backupId };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -105,7 +105,7 @@ export class BackupManager {
 
       AuditLogger.logAction(userId, "RESTORE_BACKUP", `backup_${backupId}`, "success");
 
-      console.log(`[BACKUP] Restored backup ${backupId} for user ${userId}`);
+      if (import.meta.env.DEV) console.log(`[BACKUP] Restored backup ${backupId} for user ${userId}`);
       return { success: true, data: backup.data };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
