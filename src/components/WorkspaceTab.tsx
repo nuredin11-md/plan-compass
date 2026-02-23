@@ -137,6 +137,38 @@ export default function WorkspaceTab({ monthlyData }: Props) {
     });
   }, [monthlyData, selectedArea]);
 
+  // Cumulative Target vs Actual trend
+  const cumulativeTrend = useMemo(() => {
+    const filterInds = selectedArea === "all" ? indicators : indicators.filter((i) => i.programArea === selectedArea);
+    return MONTHS.map((month, idx) => {
+      let totalActual = 0;
+      let totalTarget = 0;
+      filterInds.forEach((ind) => {
+        const monthlyTarget = ind.target / 12;
+        totalTarget += monthlyTarget * (idx + 1);
+        for (let m = 0; m <= idx; m++) {
+          const entry = monthlyData.find((e) => e.code === ind.code && e.month === MONTHS[m]);
+          totalActual += entry?.actual ?? 0;
+        }
+      });
+      // Recalculate actual properly
+      totalActual = 0;
+      filterInds.forEach((ind) => {
+        for (let m = 0; m <= idx; m++) {
+          const entry = monthlyData.find((e) => e.code === ind.code && e.month === MONTHS[m]);
+          totalActual += entry?.actual ?? 0;
+        }
+      });
+      return { month: month.substring(0, 3), fullMonth: month, Actual: totalActual, Target: Math.round(totalTarget) };
+    });
+  }, [monthlyData, selectedArea]);
+
+  // Top & Bottom performers
+  const topBottom = useMemo(() => {
+    const sorted = [...indicatorPerformance].sort((a, b) => b.percent - a.percent);
+    return { top5: sorted.slice(0, 5), bottom5: sorted.slice(-5).reverse() };
+  }, [indicatorPerformance]);
+
   // Radar data
   const radarData = useMemo(() => {
     return areas.map((area) => {
@@ -628,6 +660,26 @@ export default function WorkspaceTab({ monthlyData }: Props) {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Cumulative Target vs Actual */}
+            <Card>
+              <CardHeader><CardTitle className="text-base">Cumulative Target vs Actual</CardTitle></CardHeader>
+              <CardContent>
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={cumulativeTrend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
+                      <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                      <Tooltip />
+                      <Legend />
+                      <Area type="monotone" dataKey="Target" stroke="hsl(var(--muted-foreground))" fill="hsl(var(--muted))" strokeDasharray="5 5" fillOpacity={0.3} />
+                      <Area type="monotone" dataKey="Actual" stroke="#0e88a8" fill="#0e88a8" fillOpacity={0.2} strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 
@@ -662,6 +714,48 @@ export default function WorkspaceTab({ monthlyData }: Props) {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Top & Bottom Performers */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader><CardTitle className="text-base flex items-center gap-2">🏆 Top 5 Performers</CardTitle></CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {topBottom.top5.map((d, i) => (
+                <div key={d.code} className="flex items-center gap-3 text-sm">
+                  <span className="font-bold text-muted-foreground w-5">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="truncate font-medium">{d.indicator}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{d.code}</p>
+                  </div>
+                  <span className="inline-block px-2 py-0.5 rounded-full text-xs font-bold text-white" style={{ backgroundColor: STATUS_COLORS[d.status] }}>
+                    {d.percent}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle className="text-base flex items-center gap-2">⚠️ Bottom 5 — Needs Attention</CardTitle></CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {topBottom.bottom5.map((d, i) => (
+                <div key={d.code} className="flex items-center gap-3 text-sm">
+                  <span className="font-bold text-muted-foreground w-5">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="truncate font-medium">{d.indicator}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{d.code}</p>
+                  </div>
+                  <span className="inline-block px-2 py-0.5 rounded-full text-xs font-bold text-white" style={{ backgroundColor: STATUS_COLORS[d.status] }}>
+                    {d.percent}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
