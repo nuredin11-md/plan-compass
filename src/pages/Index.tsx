@@ -11,8 +11,6 @@ import MonthlyDataTab from "@/components/MonthlyDataTab";
 import DashboardTab from "@/components/DashboardTab";
 import DHIS2ImportTab from "@/components/DHIS2ImportTab";
 import FeedbackTab from "@/components/FeedbackTab";
-import AnalysisTab from "@/components/AnalysisTab";
-import DataQualityTab from "@/components/DataQualityTab";
 import DistributionTab from "@/components/DistributionTab";
 import BackupRecoveryTab from "@/components/BackupRecoveryTab";
 import YearComparisonTab from "@/components/YearComparisonTab";
@@ -170,10 +168,6 @@ const Index = () => {
         return <MonthlyDataTab monthlyData={monthlyData} setMonthlyData={setMonthlyData} selectedYear={selectedYear} />;
       case "import":
         return <DHIS2ImportTab monthlyData={monthlyData} setMonthlyData={setMonthlyData} />;
-      case "analysis":
-        return <AnalysisTab monthlyData={monthlyData} />;
-      case "dataquality":
-        return <DataQualityTab monthlyData={monthlyData} />;
       case "distribution":
         return <DistributionTab monthlyData={monthlyData} />;
       case "backup":

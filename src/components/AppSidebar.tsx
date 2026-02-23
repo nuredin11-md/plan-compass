@@ -4,10 +4,10 @@ import {
   ClipboardList,
   CalendarDays,
   Upload,
-  TrendingUp,
+  
   GitCompareArrows,
   MessageSquareText,
-  CheckCircle,
+  
   Share2,
   Zap,
   HardDrive,
@@ -32,8 +32,6 @@ const navItems = [
   { id: "masterplan", label: "Master Plan", icon: ClipboardList, color: "text-purple-500" },
   { id: "monthly", label: "Monthly Entry", icon: CalendarDays, color: "text-amber-500" },
   { id: "import", label: "DHIS2 Import", icon: Upload, color: "text-green-500" },
-  { id: "analysis", label: "Analysis", icon: TrendingUp, color: "text-cyan-500" },
-  { id: "dataquality", label: "Data Quality", icon: CheckCircle, color: "text-emerald-500" },
   { id: "distribution", label: "Distribution", icon: Share2, color: "text-pink-500" },
   { id: "backup", label: "Backup & Recovery", icon: HardDrive, color: "text-red-500" },
   { id: "comparison", label: "YoY Compare", icon: GitCompareArrows, color: "text-indigo-500" },
