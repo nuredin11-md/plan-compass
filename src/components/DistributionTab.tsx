@@ -45,9 +45,13 @@ export default function DistributionTab({ monthlyData }: Props) {
       return;
     }
 
-    if (!InputValidator.isValidPhoneNumber(telegramChatId.replace(/^-/, ""))) {
-      // Chat ID validation - allows negative numbers for group chats
-      toast({ title: "Error", description: "Invalid Chat ID format", variant: "destructive" });
+    if (!InputValidator.isValidTelegramChatId(telegramChatId)) {
+      toast({ title: "Error", description: "Invalid Chat ID. Must be a numeric ID (e.g., 123456789 or -1001234567890)", variant: "destructive" });
+      return;
+    }
+
+    if (!InputValidator.isValidTelegramBotToken(telegramBotToken)) {
+      toast({ title: "Error", description: "Invalid Bot Token format", variant: "destructive" });
       return;
     }
 

@@ -96,7 +96,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
       setEditingCode(null);
       toast.success("Plan saved successfully");
     } catch (error) {
-      console.error("Error saving plan:", error);
+      if (import.meta.env.DEV) console.error("Error saving plan:", error);
       toast.error("Failed to save plan");
     }
   };

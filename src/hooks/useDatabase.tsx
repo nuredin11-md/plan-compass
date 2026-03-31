@@ -49,7 +49,7 @@ export function useDatabase() {
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to fetch annual plans";
         setError(message);
-        console.error("Error fetching annual plans:", err);
+        if (import.meta.env.DEV) console.error("Error fetching annual plans:", err);
         return [];
       } finally {
         setLoading(false);
@@ -74,7 +74,7 @@ export function useDatabase() {
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to fetch monthly data";
         setError(message);
-        console.error("Error fetching monthly data:", err);
+        if (import.meta.env.DEV) console.error("Error fetching monthly data:", err);
         return [];
       } finally {
         setLoading(false);
@@ -119,7 +119,7 @@ export function useDatabase() {
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to save monthly data";
         setError(message);
-        console.error("Error upserting monthly data:", err);
+        if (import.meta.env.DEV) console.error("Error upserting monthly data:", err);
         return null;
       }
     },
@@ -168,7 +168,7 @@ export function useDatabase() {
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to save annual plan";
         setError(message);
-        console.error("Error upserting annual plan:", err);
+        if (import.meta.env.DEV) console.error("Error upserting annual plan:", err);
         return null;
       }
     },

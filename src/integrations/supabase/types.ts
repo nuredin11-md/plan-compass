@@ -59,6 +59,39 @@ export type Database = {
         }
         Relationships: []
       }
+      audit_logs: {
+        Row: {
+          action: string
+          changes: Json | null
+          created_at: string
+          error_message: string | null
+          id: string
+          resource: string
+          status: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          changes?: Json | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          resource: string
+          status?: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          changes?: Json | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          resource?: string
+          status?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       monthly_data: {
         Row: {
           actual: number

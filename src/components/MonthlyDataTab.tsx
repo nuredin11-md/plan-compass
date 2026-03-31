@@ -104,7 +104,7 @@ export default function MonthlyDataTab({ monthlyData, setMonthlyData, selectedYe
         toast.success("Data saved", { duration: 2000 });
       } catch (error) {
         setSaveStatus("error");
-        console.error("Save error:", error);
+        if (import.meta.env.DEV) console.error("Save error:", error);
         toast.error("Failed to save data");
         AuditLogger.logSecurityEvent("system", "AUTO_SAVE_FAILED", String(error) || "unknown_error");
       }
@@ -410,7 +410,7 @@ export default function MonthlyDataTab({ monthlyData, setMonthlyData, selectedYe
                       });
                     } catch (error) {
                       setSaveStatus("error");
-                      console.error("Manual save error:", error);
+                      if (import.meta.env.DEV) console.error("Manual save error:", error);
                       toast.error("Failed to save data");
                       AuditLogger.logSecurityEvent("system", "MANUAL_SAVE_FAILED", String(error) || "unknown_error");
                     }
