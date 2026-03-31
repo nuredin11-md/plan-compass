@@ -74,7 +74,7 @@ export function useDatabase() {
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to fetch monthly data";
         setError(message);
-        console.error("Error fetching monthly data:", err);
+        if (import.meta.env.DEV) console.error("Error fetching monthly data:", err);
         return [];
       } finally {
         setLoading(false);
