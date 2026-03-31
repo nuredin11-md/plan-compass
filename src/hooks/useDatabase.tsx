@@ -119,7 +119,7 @@ export function useDatabase() {
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to save monthly data";
         setError(message);
-        console.error("Error upserting monthly data:", err);
+        if (import.meta.env.DEV) console.error("Error upserting monthly data:", err);
         return null;
       }
     },
