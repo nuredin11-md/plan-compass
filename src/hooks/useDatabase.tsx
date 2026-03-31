@@ -49,7 +49,7 @@ export function useDatabase() {
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to fetch annual plans";
         setError(message);
-        console.error("Error fetching annual plans:", err);
+        if (import.meta.env.DEV) console.error("Error fetching annual plans:", err);
         return [];
       } finally {
         setLoading(false);
