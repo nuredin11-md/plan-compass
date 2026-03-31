@@ -1,108 +1,10 @@
 /**
  * Security Utilities for Plan Compass
- * Handles encryption, secure storage, and security validations
+ * Handles input validation, data validation, and audit logging
  */
 
 import type { MonthlyEntry } from "@/data/hospitalIndicators";
-
-// ─── ENCRYPTION UTILITIES ───
-export class SecurityManager {
-  /**
-   * Encrypts sensitive data using a simple XOR cipher with Base64 encoding
-   * NOTE: For production, use proper encryption like TweetNaCl.js or crypto-js
-   */
-  static encrypt(data: string, key: string): string {
-    try {
-      const encoded = btoa(data); // Base64 encode
-      const encrypted = Array.from(encoded)
-        .map((char, i) => String.fromCharCode(char.charCodeAt(0) ^ key.charCodeAt(i % key.length)))
-        .join("");
-      return btoa(encrypted);
-    } catch (error) {
-      console.error("Encryption failed:", error);
-      return "";
-    }
-  }
-
-  /**
-   * Decrypts data encrypted with encrypt()
-   */
-  static decrypt(encrypted: string, key: string): string {
-    try {
-      const decrypted = Array.from(atob(encrypted))
-        .map((char, i) => String.fromCharCode(char.charCodeAt(0) ^ key.charCodeAt(i % key.length)))
-        .join("");
-      return atob(decrypted);
-    } catch (error) {
-      console.error("Decryption failed:", error);
-      return "";
-    }
-  }
-
-  /**
-   * Hash a string using SHA-256 (requires crypto API)
-   */
-  static async hashDataSHA256(data: string): Promise<string> {
-    try {
-      const encoder = new TextEncoder();
-      const dataBuffer = encoder.encode(data);
-      const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-      return hashHex;
-    } catch (error) {
-      console.error("Hashing failed:", error);
-      return "";
-    }
-  }
-}
-
-// ─── SECURE STORAGE ───
-export class SecureStorage {
-  private static readonly PREFIX = "secure_";
-  private static readonly ENCRYPTION_KEY = "plan-compass-security-key"; // In production, use environment variable
-
-  /**
-   * Store sensitive data securely
-   */
-  static setSecureItem(key: string, value: string): void {
-    try {
-      const encrypted = SecurityManager.encrypt(value, this.ENCRYPTION_KEY);
-      localStorage.setItem(this.PREFIX + key, encrypted);
-    } catch (error) {
-      console.error(`Failed to store secure item ${key}:`, error);
-    }
-  }
-
-  /**
-   * Retrieve secure data
-   */
-  static getSecureItem(key: string): string | null {
-    try {
-      const encrypted = localStorage.getItem(this.PREFIX + key);
-      if (!encrypted) return null;
-      return SecurityManager.decrypt(encrypted, this.ENCRYPTION_KEY);
-    } catch (error) {
-      console.error(`Failed to retrieve secure item ${key}:`, error);
-      return null;
-    }
-  }
-
-  /**
-   * Remove secure data
-   */
-  static removeSecureItem(key: string): void {
-    localStorage.removeItem(this.PREFIX + key);
-  }
-
-  /**
-   * Clear all secure items
-   */
-  static clearSecureItems(): void {
-    const keys = Object.keys(localStorage).filter((k) => k.startsWith(this.PREFIX));
-    keys.forEach((key) => localStorage.removeItem(key));
-  }
-}
+import { supabase } from "@/integrations/supabase/client";
 
 // ─── INPUT VALIDATION & SANITIZATION ───
 export class InputValidator {
@@ -129,6 +31,24 @@ export class InputValidator {
   static isValidPhoneNumber(phone: string): boolean {
     const phoneRegex = /^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/;
     return phoneRegex.test(phone.replace(/\s/g, ""));
+  }
+
+  /**
+   * Validate Telegram Chat ID format
+   * Personal chat: positive integer, Group/Channel: negative integer
+   */
+  static isValidTelegramChatId(chatId: string): boolean {
+    const chatIdRegex = /^-?\d+$/;
+    if (!chatIdRegex.test(chatId)) return false;
+    const numericId = parseInt(chatId, 10);
+    return numericId >= -10000000000000 && numericId <= 10000000000;
+  }
+
+  /**
+   * Validate Telegram Bot Token format
+   */
+  static isValidTelegramBotToken(token: string): boolean {
+    return /^\d{8,10}:[A-Za-z0-9_-]{35}$/.test(token);
   }
 
   /**
@@ -159,6 +79,54 @@ export class InputValidator {
   static isValidYear(year: number): boolean {
     const currentYear = new Date().getFullYear();
     return Number.isInteger(year) && year >= 1990 && year <= currentYear + 5;
+  }
+}
+
+// ─── SECURE STORAGE (non-sensitive preferences only) ───
+export class SecureStorage {
+  private static readonly PREFIX = "app_";
+
+  /**
+   * Store non-sensitive UI preferences in localStorage
+   * NOTE: Do NOT use for API tokens, passwords, or secrets
+   */
+  static setSecureItem(key: string, value: string): void {
+    try {
+      localStorage.setItem(this.PREFIX + key, value);
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error(`Failed to store item ${key}:`, error);
+      }
+    }
+  }
+
+  /**
+   * Retrieve stored preference
+   */
+  static getSecureItem(key: string): string | null {
+    try {
+      return localStorage.getItem(this.PREFIX + key);
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error(`Failed to retrieve item ${key}:`, error);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Remove stored item
+   */
+  static removeSecureItem(key: string): void {
+    localStorage.removeItem(this.PREFIX + key);
+  }
+
+  /**
+   * Clear all app items
+   */
+  static clearSecureItems(): void {
+    const keys = Object.keys(localStorage).filter((k) => k.startsWith(this.PREFIX));
+    keys.forEach((key) => localStorage.removeItem(key));
   }
 }
 
@@ -203,14 +171,12 @@ export class DataValidator {
     data.forEach((row, index) => {
       const sanitizedRow = { ...row };
 
-      // Sanitize string fields
       Object.keys(sanitizedRow).forEach((key) => {
         if (typeof sanitizedRow[key] === "string") {
           sanitizedRow[key] = InputValidator.sanitizeInput(sanitizedRow[key] as string);
         }
       });
 
-      // Validate required fields
       if (!sanitizedRow.code || typeof sanitizedRow.code !== "string") {
         errors.push(`Row ${index + 1}: Missing or invalid indicator code`);
       }
@@ -230,38 +196,46 @@ export class DataValidator {
   }
 }
 
-// ─── AUDIT LOGGING ───
+// ─── AUDIT LOGGING (database-backed) ───
 export interface AuditLog {
   timestamp: string;
   userId: string;
   action: string;
   resource: string;
   changes?: Record<string, unknown>;
-  ipAddress?: string;
   status: "success" | "failure";
   errorMessage?: string;
 }
 
 export class AuditLogger {
-  private static readonly isDevelopment = import.meta.env.DEV;
-
   /**
-   * Log user actions for compliance and troubleshooting
+   * Log user actions to database for compliance and troubleshooting
    */
-  static logAction(userId: string, action: string, resource: string, status: "success" | "failure" = "success", changes?: Record<string, unknown>): void {
-    const log: AuditLog = {
-      timestamp: new Date().toISOString(),
-      userId,
-      action,
-      resource,
-      changes,
-      status,
-    };
+  static logAction(
+    userId: string,
+    action: string,
+    resource: string,
+    status: "success" | "failure" = "success",
+    changes?: Record<string, unknown>
+  ): void {
+    // Fire-and-forget insert to audit_logs table
+    supabase
+      .from("audit_logs")
+      .insert({
+        user_id: userId === "system" ? null : userId,
+        action,
+        resource,
+        changes: changes ? changes : undefined,
+        status,
+      })
+      .then(({ error }) => {
+        if (error && import.meta.env.DEV) {
+          console.error("[AUDIT] Failed to log:", error.message);
+        }
+      });
 
-    this.storeAuditLog(log);
-
-    if (this.isDevelopment) {
-      console.log(`[AUDIT] ${action} on ${resource}:`, log);
+    if (import.meta.env.DEV) {
+      console.log(`[AUDIT] ${action} on ${resource}`);
     }
   }
 
@@ -269,61 +243,24 @@ export class AuditLogger {
    * Log failed security events
    */
   static logSecurityEvent(userId: string, eventType: string, message: string): void {
-    const log: AuditLog = {
-      timestamp: new Date().toISOString(),
-      userId,
-      action: `SECURITY_EVENT: ${eventType}`,
-      resource: "security",
-      status: "failure",
-      errorMessage: message,
-    };
+    supabase
+      .from("audit_logs")
+      .insert({
+        user_id: userId === "system" ? null : userId,
+        action: `SECURITY_EVENT: ${eventType}`,
+        resource: "security",
+        status: "failure",
+        error_message: message,
+      })
+      .then(({ error }) => {
+        if (error && import.meta.env.DEV) {
+          console.error("[AUDIT] Failed to log security event:", error.message);
+        }
+      });
 
-    this.storeAuditLog(log);
-
-    if (this.isDevelopment) {
+    if (import.meta.env.DEV) {
       console.warn(`[SECURITY] ${eventType}:`, message);
     }
-  }
-
-  /**
-   * Store audit log in IndexedDB for persistence
-   */
-  private static storeAuditLog(log: AuditLog): void {
-    try {
-      const logsKey = "audit_logs";
-      const existingLogs = localStorage.getItem(logsKey);
-      const logs = existingLogs ? JSON.parse(existingLogs) : [];
-      logs.push(log);
-
-      // Keep only last 1000 logs
-      const recentLogs = logs.slice(-1000);
-      localStorage.setItem(logsKey, JSON.stringify(recentLogs));
-    } catch (error) {
-      console.error("Failed to store audit log:", error);
-    }
-  }
-
-  /**
-   * Retrieve audit logs
-   */
-  static getAuditLogs(limit: number = 100): AuditLog[] {
-    try {
-      const logsKey = "audit_logs";
-      const logs = localStorage.getItem(logsKey);
-      if (!logs) return [];
-      const allLogs = JSON.parse(logs) as AuditLog[];
-      return allLogs.slice(-limit);
-    } catch (error) {
-      console.error("Failed to retrieve audit logs:", error);
-      return [];
-    }
-  }
-
-  /**
-   * Clear audit logs
-   */
-  static clearAuditLogs(): void {
-    localStorage.removeItem("audit_logs");
   }
 }
 
@@ -331,38 +268,24 @@ export class AuditLogger {
 export class RateLimiter {
   private static requestTimestamps: Map<string, number[]> = new Map();
 
-  /**
-   * Check if request should be rate limited
-   * @param identifier User ID or IP address
-   * @param maxRequests Maximum requests allowed
-   * @param windowMs Time window in milliseconds
-   */
   static checkRateLimit(identifier: string, maxRequests: number = 60, windowMs: number = 60000): boolean {
     const now = Date.now();
     const timestamps = this.requestTimestamps.get(identifier) || [];
-
-    // Remove old timestamps outside the window
     const recentTimestamps = timestamps.filter((ts) => now - ts < windowMs);
 
     if (recentTimestamps.length >= maxRequests) {
-      return false; // Rate limit exceeded
+      return false;
     }
 
     recentTimestamps.push(now);
     this.requestTimestamps.set(identifier, recentTimestamps);
-    return true; // Request allowed
+    return true;
   }
 
-  /**
-   * Reset rate limiter for a user
-   */
   static resetRateLimit(identifier: string): void {
     this.requestTimestamps.delete(identifier);
   }
 
-  /**
-   * Get remaining requests
-   */
   static getRemainingRequests(identifier: string, maxRequests: number = 60, windowMs: number = 60000): number {
     const now = Date.now();
     const timestamps = this.requestTimestamps.get(identifier) || [];
@@ -371,33 +294,10 @@ export class RateLimiter {
   }
 }
 
-// ─── CERTIFICATE PINNING HELPER ───
-export class CertificatePinning {
-  /**
-   * Verify API endpoint certificate (for production use)
-   * This is a placeholder - implement proper certificate pinning based on your backend
-   */
-  static async verifyAPIEndpoint(endpoint: string): Promise<boolean> {
-    try {
-      if (!endpoint.startsWith("https://")) {
-        console.warn("API endpoint is not HTTPS");
-        return false;
-      }
-      // In production, implement proper certificate pinning
-      return true;
-    } catch (error) {
-      console.error("Certificate verification failed:", error);
-      return false;
-    }
-  }
-}
-
 export default {
-  SecurityManager,
-  SecureStorage,
   InputValidator,
+  SecureStorage,
   DataValidator,
   AuditLogger,
   RateLimiter,
-  CertificatePinning,
 };

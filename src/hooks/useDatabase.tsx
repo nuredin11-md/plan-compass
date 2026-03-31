@@ -168,7 +168,7 @@ export function useDatabase() {
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to save annual plan";
         setError(message);
-        console.error("Error upserting annual plan:", err);
+        if (import.meta.env.DEV) console.error("Error upserting annual plan:", err);
         return null;
       }
     },

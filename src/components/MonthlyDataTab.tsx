@@ -410,7 +410,7 @@ export default function MonthlyDataTab({ monthlyData, setMonthlyData, selectedYe
                       });
                     } catch (error) {
                       setSaveStatus("error");
-                      console.error("Manual save error:", error);
+                      if (import.meta.env.DEV) console.error("Manual save error:", error);
                       toast.error("Failed to save data");
                       AuditLogger.logSecurityEvent("system", "MANUAL_SAVE_FAILED", String(error) || "unknown_error");
                     }
