@@ -539,159 +539,320 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
       </div>
 
       {/* Scrollable Table Container */}
-      <div className="relative">
-        <div
-          ref={scrollContainerRef}
-          className="rounded-lg border bg-card overflow-y-auto scroll-smooth"
-          style={{
-            maxHeight: "calc(100vh - 320px)",
-            overflowX: "auto",
-            scrollbarWidth: "thin",
-          }}
-        >
-          <table ref={tableRef} className="w-full text-sm border-collapse min-w-[1200px]">
-            <thead>
-              <tr className="border-b bg-muted/50 sticky top-0 z-20">
-                <th className="sticky left-0 z-30 bg-white dark:bg-slate-800 border-r-2 border-border table-header text-left p-3 min-w-[80px] font-semibold shadow-sm">
-                  Code
-                </th>
-                <th className="sticky left-[80px] z-20 bg-white dark:bg-slate-800 border-r border-border table-header text-left p-3 min-w-[300px] font-semibold shadow-sm">
-                  Indicator Name
-                </th>
+<div className="relative w-full">
+  {/* Left Gradient Shadow */}
+  <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-background to-transparent pointer-events-none z-40" />
 
-                <th className="table-header text-left p-3 min-w-[140px] font-semibold">Program Area</th>
-                <th className="table-header text-left p-3 min-w-[140px] font-semibold">Sub-program</th>
-                <th className="table-header text-center p-3 min-w-[80px] font-semibold">Unit</th>
-                <th className="table-header text-right p-3 min-w-[90px] font-semibold">Baseline</th>
-                <th className="table-header text-right p-3 min-w-[90px] font-semibold">Target</th>
-                <th className="table-header text-right p-3 min-w-[100px] font-semibold">Actual (YTD)</th>
-                <th className="table-header text-right p-3 min-w-[100px] font-semibold">% Achieved</th>
-                <th className="table-header text-center p-3 min-w-[100px] font-semibold">Status</th>
-                <th className="table-header text-center p-3 min-w-[120px] font-semibold">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((ind, i) => {
-                const actual = getActualYTD(ind.code, monthlyData);
-                const percent = ind.target === 0 ? 0 : Math.round((actual / ind.target) * 100);
-                const isEditing = editingCode === ind.code;
-                const isCustom = customIndicators.some((ci) => ci.code === ind.code);
+  {/* Right Gradient Shadow */}
+  <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-background to-transparent pointer-events-none z-40" />
 
-                return (
-                  <tr
-                    key={ind.code}
-                    className={`border-b last:border-0 hover:bg-primary/5 transition-colors ${
-                      i % 2 === 0 ? "" : "bg-muted/5"
-                    }`}
-                  >
-                    <td className="sticky left-0 z-20 bg-white dark:bg-slate-800 border-r-2 border-border p-3 font-mono text-xs font-semibold text-primary break-words whitespace-normal min-h-[60px] align-top shadow-sm">
-                      {ind.code}
-                    </td>
-                    <td className="sticky left-[80px] z-10 bg-white dark:bg-slate-800 border-r border-border p-3 font-medium text-sm max-w-[300px] break-words whitespace-normal min-h-[60px] align-top">
-                      <div className="leading-relaxed">
-                        {ind.indicator}
-                      </div>
-                    </td>
+  <div
+    ref={scrollContainerRef}
+    className="
+      rounded-xl
+      border
+      bg-card
+      overflow-auto
+      scroll-smooth
+      w-full
+      shadow-sm
+    "
+    style={{
+      maxHeight: "calc(100vh - 280px)",
+      scrollbarWidth: "thin",
+    }}
+  >
+    <table
+      ref={tableRef}
+      className="
+        w-full
+        text-sm
+        border-collapse
+        min-w-[1500px]
+      "
+    >
+      <thead>
+        <tr className="border-b bg-muted/50 sticky top-0 z-20 backdrop-blur supports-[backdrop-filter]:bg-background/90">
+          {/* CODE */}
+          <th
+            className="
+              sticky left-0 z-30
+              bg-background
+              border-r-2 border-border
+              text-left
+              p-3
+              min-w-[110px]
+              font-semibold
+              shadow-sm
+            "
+          >
+            Code
+          </th>
 
-                    <td className="p-3 text-sm break-words whitespace-normal min-h-[60px] align-top">{ind.programArea}</td>
-                    <td className="p-3 text-sm break-words whitespace-normal min-h-[60px] align-top text-muted-foreground">{ind.subProgram}</td>
-                    <td className="p-3 text-center text-sm break-words whitespace-normal min-h-[60px] align-top text-muted-foreground">{ind.unit}</td>
-                    <td className="p-3 text-right font-mono text-sm break-words whitespace-normal min-h-[60px] align-top">
-                      {isEditing ? (
-                        <Input
-                          type="number"
-                          value={editBaseline}
-                          onChange={(e) => setEditBaseline(e.target.value)}
-                          className="w-20 text-right font-mono ml-auto text-xs"
-                        />
-                      ) : (
-                        <span className="inline-block">{ind.baseline}</span>
+          {/* INDICATOR */}
+          <th
+            className="
+              sticky left-[110px]
+              z-20
+              bg-background
+              border-r border-border
+              text-left
+              p-3
+              min-w-[500px]
+              font-semibold
+              shadow-sm
+            "
+          >
+            Indicator Name
+          </th>
+
+          <th className="table-header text-left p-3 min-w-[180px] font-semibold">
+            Program Area
+          </th>
+
+          <th className="table-header text-left p-3 min-w-[180px] font-semibold">
+            Sub-program
+          </th>
+
+          <th className="table-header text-center p-3 min-w-[90px] font-semibold">
+            Unit
+          </th>
+
+          <th className="table-header text-right p-3 min-w-[110px] font-semibold">
+            Baseline
+          </th>
+
+          <th className="table-header text-right p-3 min-w-[110px] font-semibold">
+            Target
+          </th>
+
+          <th className="table-header text-right p-3 min-w-[120px] font-semibold">
+            Actual (YTD)
+          </th>
+
+          <th className="table-header text-right p-3 min-w-[120px] font-semibold">
+            % Achieved
+          </th>
+
+          <th className="table-header text-center p-3 min-w-[130px] font-semibold">
+            Status
+          </th>
+
+          <th className="table-header text-center p-3 min-w-[150px] font-semibold">
+            Actions
+          </th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {filtered.map((ind, i) => {
+          const actual = getActualYTD(ind.code, monthlyData);
+
+          const percent =
+            ind.target === 0
+              ? 0
+              : Math.round((actual / ind.target) * 100);
+
+          const isEditing = editingCode === ind.code;
+
+          const isCustom = customIndicators.some(
+            (ci) => ci.code === ind.code
+          );
+
+          return (
+            <tr
+              key={ind.code}
+              className={`
+                border-b
+                last:border-0
+                hover:bg-primary/5
+                transition-colors
+                ${i % 2 === 0 ? "" : "bg-muted/5"}
+              `}
+            >
+              {/* CODE */}
+              <td
+                className="
+                  sticky left-0 z-20
+                  bg-background
+                  border-r-2 border-border
+                  p-3
+                  font-mono
+                  text-xs
+                  font-semibold
+                  text-primary
+                  whitespace-normal
+                  break-words
+                  align-top
+                  shadow-sm
+                  min-w-[110px]
+                "
+              >
+                {ind.code}
+              </td>
+
+              {/* INDICATOR */}
+              <td
+                className="
+                  sticky left-[110px]
+                  z-10
+                  bg-background
+                  border-r border-border
+                  p-3
+                  font-medium
+                  text-sm
+                  whitespace-normal
+                  break-words
+                  align-top
+                  min-w-[500px]
+                  max-w-[500px]
+                "
+              >
+                <div className="leading-relaxed">
+                  {ind.indicator}
+                </div>
+              </td>
+
+              {/* PROGRAM AREA */}
+              <td className="p-3 text-sm whitespace-normal break-words align-top min-w-[180px]">
+                {ind.programArea}
+              </td>
+
+              {/* SUB PROGRAM */}
+              <td className="p-3 text-sm text-muted-foreground whitespace-normal break-words align-top min-w-[180px]">
+                {ind.subProgram}
+              </td>
+
+              {/* UNIT */}
+              <td className="p-3 text-center text-sm text-muted-foreground align-top">
+                {ind.unit}
+              </td>
+
+              {/* BASELINE */}
+              <td className="p-3 text-right font-mono text-sm align-top">
+                {isEditing ? (
+                  <Input
+                    type="number"
+                    value={editBaseline}
+                    onChange={(e) =>
+                      setEditBaseline(e.target.value)
+                    }
+                    className="w-24 text-right font-mono ml-auto text-xs"
+                  />
+                ) : (
+                  <span>{ind.baseline}</span>
+                )}
+              </td>
+
+              {/* TARGET */}
+              <td className="p-3 text-right font-mono text-sm font-semibold align-top">
+                {isEditing ? (
+                  <Input
+                    type="number"
+                    value={editTarget}
+                    onChange={(e) =>
+                      setEditTarget(e.target.value)
+                    }
+                    className="w-24 text-right font-mono ml-auto text-xs"
+                  />
+                ) : (
+                  <span>{ind.target}</span>
+                )}
+              </td>
+
+              {/* ACTUAL */}
+              <td className="p-3 text-right font-mono text-sm font-semibold text-primary align-top">
+                {actual}
+              </td>
+
+              {/* PERCENT */}
+              <td className="p-3 text-right font-mono text-sm font-semibold text-secondary align-top">
+                {percent}%
+              </td>
+
+              {/* STATUS */}
+              <td className="p-3 text-center align-top">
+                <StatusBadge percent={percent} />
+              </td>
+
+              {/* ACTIONS */}
+              <td className="p-3 text-center align-top min-w-[150px]">
+                <div className="flex items-center justify-center gap-1">
+                  {isEditing ? (
+                    <>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 hover:bg-green-100 dark:hover:bg-green-900"
+                        onClick={() => saveEdit(ind.code)}
+                        title="Save changes"
+                      >
+                        <Save className="h-4 w-4 text-green-600" />
+                      </Button>
+
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 hover:bg-red-100 dark:hover:bg-red-900"
+                        onClick={() => setEditingCode(null)}
+                        title="Cancel editing"
+                      >
+                        <X className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      {/* Edit Target/Baseline */}
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 hover:bg-blue-100 dark:hover:bg-blue-900"
+                        onClick={() => startEdit(ind)}
+                        title="Edit target/baseline"
+                      >
+                        <Pencil className="h-4 w-4 text-blue-600" />
+                      </Button>
+
+                      {/* Edit Indicator */}
+                      {isCustom && (
+                        <>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 hover:bg-orange-100 dark:hover:bg-orange-900"
+                            onClick={() =>
+                              startEditIndicator(ind)
+                            }
+                            title="Edit indicator details"
+                          >
+                            <Pencil className="h-4 w-4 text-orange-600" />
+                          </Button>
+
+                          {/* Delete */}
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 hover:bg-red-100 dark:hover:bg-red-900"
+                            onClick={() =>
+                              handleDeleteIndicator(ind.code)
+                            }
+                            title="Delete indicator"
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </>
                       )}
-                    </td>
-                    <td className="p-3 text-right font-mono text-sm font-semibold break-words whitespace-normal min-h-[60px] align-top">
-                      {isEditing ? (
-                        <Input
-                          type="number"
-                          value={editTarget}
-                          onChange={(e) => setEditTarget(e.target.value)}
-                          className="w-20 text-right font-mono ml-auto text-xs"
-                        />
-                      ) : (
-                        <span className="inline-block">{ind.target}</span>
-                      )}
-                    </td>
-                    <td className="p-3 text-right font-mono text-sm font-semibold text-primary break-words whitespace-normal min-h-[60px] align-top">{actual}</td>
-                    <td className="p-3 text-right font-mono text-sm font-semibold text-secondary break-words whitespace-normal min-h-[60px] align-top">{percent}%</td>
-                    <td className="p-3 text-center break-words whitespace-normal min-h-[60px] align-top">
-                      <StatusBadge percent={percent} />
-                    </td>
-                    <td className="p-3 text-center break-words whitespace-normal min-h-[60px] align-top">
-                      <div className="flex items-center justify-center gap-1">
-                        {isEditing ? (
-                          <>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7 hover:bg-green-100 dark:hover:bg-green-900"
-                              onClick={() => saveEdit(ind.code)}
-                              title="Save changes"
-                            >
-                              <Save className="h-3.5 w-3.5 text-green-600" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7 hover:bg-red-100 dark:hover:bg-red-900"
-                              onClick={() => setEditingCode(null)}
-                              title="Cancel editing"
-                            >
-                              <X className="h-3.5 w-3.5 text-destructive" />
-                            </Button>
-                          </>
-                        ) : (
-                          <>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7 hover:bg-blue-100 dark:hover:bg-blue-900"
-                              onClick={() => startEdit(ind)}
-                              title="Edit target/baseline"
-                            >
-                              <Pencil className="h-3.5 w-3.5 text-blue-600" />
-                            </Button>
-                            {isCustom && (
-                              <>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7 hover:bg-orange-100 dark:hover:bg-orange-900"
-                                  onClick={() => startEditIndicator(ind)}
-                                  title="Edit indicator details"
-                                >
-                                  <Pencil className="h-3.5 w-3.5 text-orange-600" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7 hover:bg-red-100 dark:hover:bg-red-900"
-                                  onClick={() => handleDeleteIndicator(ind.code)}
-                                  title="Delete indicator"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                                </Button>
-                              </>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                    </>
+                  )}
+                </div>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+</div>
 
       <p className="text-xs text-muted-foreground">
         Showing {filtered.length} of {indicatorsForYear.length} indicators
