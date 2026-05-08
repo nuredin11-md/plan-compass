@@ -35,7 +35,8 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      {/* ነጭ ስክሪኑን እና 404 ስህተቱን የሚያስተካክለው ወሳኝ መስመር እዚህ አለ */}
+      <BrowserRouter basename="/plan-compass">
         <AuthProvider>
           <Routes>
             <Route path="/auth" element={<AuthRoute />} />
