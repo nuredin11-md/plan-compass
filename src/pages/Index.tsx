@@ -163,7 +163,16 @@ const Index = () => {
       case "dashboard":
         return <DashboardTab monthlyData={monthlyData} />;
       case "workspace":
-        return <WorkspaceTab monthlyData={monthlyData} />;
+        return (
+          <WorkspaceTab
+            monthlyData={monthlyData}
+            compareData={compareData}
+            currentYear={selectedYear}
+            compareYear={compareYear ?? undefined}
+            onCompareYearChange={(year) => setCompareYear(year)}
+            availableYears={availableYears}
+          />
+        );
       case "masterplan":
         return <MasterPlanTab monthlyData={monthlyData} selectedYear={selectedYear} previousYearData={yearlyData[selectedYear - 1] || []} />;
       case "monthly":

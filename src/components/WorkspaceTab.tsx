@@ -349,12 +349,15 @@ export default function WorkspaceTab({ monthlyData }: Props) {
 
       {/* View Tabs */}
       <Tabs value={viewMode} onValueChange={setViewMode} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 print:hidden">
+        <TabsList className="grid w-full print:hidden" style={{gridTemplateColumns: compareMode ? "repeat(6, 1fr)" : "repeat(5, 1fr)"}}>
           <TabsTrigger value="table" className="gap-1.5"><Table2 className="h-4 w-4" /> Table</TabsTrigger>
           <TabsTrigger value="bar" className="gap-1.5"><BarChart3 className="h-4 w-4" /> Bar Chart</TabsTrigger>
           <TabsTrigger value="pie" className="gap-1.5"><PieChartIcon className="h-4 w-4" /> Pie Chart</TabsTrigger>
           <TabsTrigger value="trend" className="gap-1.5"><TrendingUp className="h-4 w-4" /> Trend</TabsTrigger>
           <TabsTrigger value="radar" className="gap-1.5"><RadarIcon className="h-4 w-4" /> Radar</TabsTrigger>
+          {compareMode && compareData && (
+            <TabsTrigger value="comparison" className="gap-1.5"><BarChart3 className="h-4 w-4" /> YoY</TabsTrigger>
+          )}
         </TabsList>
 
         {/* ─── TABLE VIEW ─── */}
@@ -713,6 +716,58 @@ export default function WorkspaceTab({ monthlyData }: Props) {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ─── YEAR-OVER-YEAR COMPARISON VIEW ─── */}
+        {compareMode && compareData && (
+          <TabsContent value="comparison" className="mt-4">
+            <div className="space-y-6">
+              <div className="flex gap-3 items-center text-sm text-muted-foreground">
+                <span>Comparing <strong>{currentYear}</strong> vs <strong>{compareYear}</strong></span>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Area-level YoY bar chart */}
+                <Card>
+                  <CardHeader><CardTitle className="text-base">Program Area YoY Comparison (Avg %)</CardTitle></CardHeader>
+                  <CardContent>
+                    <div className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={areaYoY} layout="vertical">
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                          <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                          <YAxis type="category" dataKey="area" width={140} tick={{ fontSize: 9 }} stroke="hsl(var(--muted-foreground))" />
+                          <Tooltip formatter={(v: number) => [`${v}%`, "Avg Achievement"]} />
+                          <Bar dataKey="current" fill="#0e88a8" name={currentYear} />
+                          <Bar dataKey="previous" fill="#94a3b8" name={compareYear} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Monthly trend YoY */}
+                <Card>
+                  <CardHeader><CardTitle className="text-base">Monthly Performance Trend YoY</CardTitle></CardHeader>
+                  <CardContent>
+                    <div className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={monthlyTrend}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                          <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                          <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                          <Tooltip formatter={(v: number) => [`${v}%`, "Achievement"]} />
+                          <Legend />
+                          <Line type="monotone" dataKey="current" stroke="#0e88a8" strokeWidth={2} name={currentYear} />
+                          <Line type="monotone" dataKey="previous" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" name={compareYear} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Top & Bottom Performers */}
@@ -756,6 +811,52 @@ export default function WorkspaceTab({ monthlyData }: Props) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Year-over-Year Comparison Table (Visible only in Compare Mode) */}
+      {compareMode && compareData && (
+        <div className="mt-6">
+          <Card>
+            <CardHeader><CardTitle className="text-base">Indicator-Level Year-over-Year Change</CardTitle></CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0">
+                    <tr className="border-b bg-muted/50">
+                      <th className="table-header text-left p-2">Code</th>
+                      <th className="table-header text-left p-2 min-w-[200px]">Indicator</th>
+                      <th className="table-header text-right p-2">{compareYear} %</th>
+                      <th className="table-header text-right p-2">{currentYear} %</th>
+                      <th className="table-header text-right p-2">Change</th>
+                      <th className="table-header text-center p-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {comparisonData.map((d, i) => (
+                      <tr key={d.code} className={`border-b last:border-0 ${i % 2 ? "bg-muted/10" : ""}`}>
+                        <td className="p-2 font-mono text-xs text-primary">{d.code}</td>
+                        <td className="p-2 text-xs">{d.indicator}</td>
+                        <td className="p-2 text-right font-mono">{d.prevPercent}%</td>
+                        <td className="p-2 text-right font-mono font-semibold">{d.currentPercent}%</td>
+                        <td className="p-2 text-right font-mono font-semibold">
+                          <span className={d.change > 0 ? "text-status-green" : d.change < 0 ? "text-status-red" : "text-muted-foreground"}>
+                            {d.change > 0 ? "+" : ""}{d.change}%
+                          </span>
+                        </td>
+                        <td className="p-2 text-center">
+                          <span className={`status-badge-${d.status}`}>
+                            {d.status === "green" ? "On Track" : d.status === "yellow" ? "At Risk" : "Off Track"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
     </div>
   );
 }

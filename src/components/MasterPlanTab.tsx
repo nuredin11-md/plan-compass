@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
-import { getStatus, getActualYTD, type MonthlyEntry, type Indicator } from "@/data/hospitalIndicators";
+import { getStatus, getActualYTD, type MonthlyEntry, type Indicator, updateIndicatorTargets, distributeAnnualTarget } from "@/data/hospitalIndicators";
 import { useIndicators } from "@/context/IndicatorsContext";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -90,9 +90,24 @@ function EditIndicatorModal({
   const [unit, setUnit] = useState(indicator.unit);
   const [baseline, setBaseline] = useState(String(indicator.baseline));
   const [target, setTarget] = useState(String(indicator.target));
+  const [monthlyTarget, setMonthlyTarget] = useState(String(indicator.monthlyTarget ?? indicator.target / 12));
+  const [quarterlyTarget, setQuarterlyTarget] = useState(String(indicator.quarterlyTarget ?? indicator.target / 4));
+  const [semiannualTarget, setSemiannualTarget] = useState(String(indicator.semiannualTarget ?? indicator.target / 2));
   const [programArea, setProgramArea] = useState(indicator.programArea);
   const [subProgram, setSubProgram] = useState(indicator.subProgram);
   const [saving, setSaving] = useState(false);
+
+  // Auto-distribute when annual target changes
+  const handleAnnualTargetChange = (value: string) => {
+    setTarget(value);
+    const annualVal = Number(value);
+    if (!isNaN(annualVal) && annualVal > 0) {
+      const dist = distributeAnnualTarget(annualVal);
+      setMonthlyTarget(String(dist.monthlyTarget));
+      setQuarterlyTarget(String(dist.quarterlyTarget));
+      setSemiannualTarget(String(dist.semiannualTarget));
+    }
+  };
 
   const handleSave = async () => {
     if (!name.trim()) { toast.error("Indicator name is required"); return; }
@@ -101,13 +116,23 @@ function EditIndicatorModal({
     if (isNaN(b) || b < 0) { toast.error("Baseline must be a positive number"); return; }
     setSaving(true);
     try {
-      await onSave({ indicator: name.trim(), unit, baseline: b, target: t, programArea, subProgram });
+      await onSave({
+        indicator: name.trim(),
+        unit,
+        baseline: b,
+        target: t,
+        monthlyTarget: Number(monthlyTarget),
+        quarterlyTarget: Number(quarterlyTarget),
+        semiannualTarget: Number(semiannualTarget),
+        programArea,
+        subProgram,
+      });
       onClose();
     } finally { setSaving(false); }
   };
 
   return (
-    <DialogContent className="sm:max-w-[560px]">
+    <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="flex items-center gap-2">
           <Pencil className="h-4 w-4 text-primary" />
@@ -166,15 +191,40 @@ function EditIndicatorModal({
           </div>
         )}
 
-        {/* Baseline + Target */}
+        {/* Baseline + Annual Target */}
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label>Baseline</Label>
             <Input type="number" min="0" value={baseline} onChange={(e) => setBaseline(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>Annual Target</Label>
-            <Input type="number" min="0" value={target} onChange={(e) => setTarget(e.target.value)} />
+            <Label>Annual Target <span className="text-red-500">*</span></Label>
+            <Input type="number" min="0" value={target} onChange={(e) => handleAnnualTargetChange(e.target.value)} />
+          </div>
+        </div>
+
+        {/* Time-Based Targets */}
+        <div className="space-y-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900">
+          <Label className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+            <Target className="h-3.5 w-3.5 inline mr-1" />
+            Time-Based Targets (Auto-calculated – <span className="italic">Editable for seasonal adjustments</span>)
+          </Label>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Monthly</Label>
+              <Input type="number" min="0" step="0.01" value={monthlyTarget} onChange={(e) => setMonthlyTarget(e.target.value)} className="text-xs" />
+              <p className="text-xs text-muted-foreground">Annual ÷ 12</p>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Quarterly</Label>
+              <Input type="number" min="0" step="0.01" value={quarterlyTarget} onChange={(e) => setQuarterlyTarget(e.target.value)} className="text-xs" />
+              <p className="text-xs text-muted-foreground">Annual ÷ 4</p>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Semi-annual</Label>
+              <Input type="number" min="0" step="0.01" value={semiannualTarget} onChange={(e) => setSemiannualTarget(e.target.value)} className="text-xs" />
+              <p className="text-xs text-muted-foreground">Annual ÷ 2</p>
+            </div>
           </div>
         </div>
 

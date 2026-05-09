@@ -1,7 +1,19 @@
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
-import { indicators, getActualYTD, getStatus, getProgramAreas, MONTHS, type MonthlyEntry, type Indicator } from "@/data/hospitalIndicators";
+import {
+  indicators,
+  getActualYTD,
+  getStatus,
+  getProgramAreas,
+  MONTHS,
+  type MonthlyEntry,
+  type Indicator,
+  calculatePeriodicPerformance,
+  flagPerformanceIssue,
+  getTargetByPeriod,
+  getActualByPeriod,
+} from "@/data/hospitalIndicators";
 
 // Extend jsPDF type for autotable
 declare module "jspdf" {
@@ -151,6 +163,55 @@ export function getDepartmentFeedbackData(monthlyData: MonthlyEntry[]) {
     });
     const avgPercent = areaInds.length > 0 ? Math.round(totalPercent / areaInds.length) : 0;
     return { area, avgPercent, details, status: getStatus(avgPercent) };
+  });
+}
+
+/**
+ * Get periodic performance feedback for departments
+ * Flags performance issues when variance > 20%
+ */
+export function getPeriodicPerformanceFeedback(
+  monthlyData: MonthlyEntry[],
+  period: "monthly" | "quarterly" | "semiannual" | "annual" = "quarterly",
+  varianceThreshold: number = 20
+) {
+  return getProgramAreas().map((area) => {
+    const areaInds = indicators.filter((i) => i.programArea === area);
+    const periodicData = areaInds.map((ind) => {
+      const perf = calculatePeriodicPerformance(ind, period, monthlyData);
+      const hasIssue = flagPerformanceIssue(perf, varianceThreshold);
+      return {
+        ...perf,
+        status: getStatus(Math.round((perf.actual / perf.target) * 100)),
+        hasIssue,
+        severity: Math.abs(perf.variancePercent) > 50 ? "critical" : Math.abs(perf.variancePercent) > 30 ? "high" : "medium",
+      };
+    });
+
+    // Calculate department-level periodic performance
+    const totalTarget = periodicData.reduce((sum, p) => sum + p.target, 0);
+    const totalActual = periodicData.reduce((sum, p) => sum + p.actual, 0);
+    const deptVariancePercent = totalTarget === 0 ? 0 : Math.round(((totalActual - totalTarget) / totalTarget) * 100);
+    const deptHasIssue = Math.abs(deptVariancePercent) > varianceThreshold;
+
+    return {
+      area,
+      period,
+      target: totalTarget,
+      actual: totalActual,
+      variancePercent: deptVariancePercent,
+      hasIssue: deptHasIssue,
+      status: getStatus(Math.round((totalActual / totalTarget) * 100)),
+      indicators: periodicData,
+      issueCount: periodicData.filter((p) => p.hasIssue).length,
+      criticalCount: periodicData.filter((p) => p.severity === "critical").length,
+      recommendation:
+        deptVariancePercent < -20
+          ? "⚠️ Performance Improvement Plan Required - Quarterly target missed by >20%"
+          : deptVariancePercent > 20
+            ? "✅ Excellent Performance - Exceeded quarterly target by >20%"
+            : "→ On Track - Within expected performance range",
+    };
   });
 }
 

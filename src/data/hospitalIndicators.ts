@@ -6,6 +6,10 @@ export interface Indicator {
   unit: string;
   baseline: number;
   target: number;
+  // Time-based targets (auto-calculated from annual target)
+  monthlyTarget?: number;
+  quarterlyTarget?: number;
+  semiannualTarget?: number;
 }
 
 export interface MonthlyEntry {
@@ -15,6 +19,17 @@ export interface MonthlyEntry {
   remarks: string;
 }
 
+export interface PeriodicTarget {
+  code: string;
+  indicator: string;
+  programArea: string;
+  period: "monthly" | "quarterly" | "semiannual" | "annual";
+  target: number;
+  actual: number;
+  variance: number;
+  variancePercent: number;
+}
+
 // Ethiopian Financial Year: Hamle (July) to Sene (June)
 // Mapped to Gregorian months starting from November
 export const MONTHS = [
@@ -22,6 +37,26 @@ export const MONTHS = [
   "Hidar (Mar)", "Tahsas (Apr)", "Tir (May)", "Yekatit (Jun)",
   "Megabit (Jul)", "Miyazia (Aug)", "Ginbot (Sep)", "Sene (Oct)"
 ];
+
+// ─── TIME-BASED AUTO-DISTRIBUTION ─────────────────────────────────────────
+
+/**
+ * Automatically calculates monthly, quarterly, and semiannual targets
+ * based on the annual target. Editable for seasonal adjustments.
+ */
+export function distributeAnnualTarget(annualTarget: number): {
+  monthlyTarget: number;
+  quarterlyTarget: number;
+  semiannualTarget: number;
+  annualTarget: number;
+} {
+  return {
+    monthlyTarget: Number((annualTarget / 12).toFixed(2)),
+    quarterlyTarget: Number((annualTarget / 4).toFixed(2)),
+    semiannualTarget: Number((annualTarget / 2).toFixed(2)),
+    annualTarget,
+  };
+}
 
 export const indicators: Indicator[] = [
   // Maternal & Child Health – Family Planning
@@ -119,13 +154,22 @@ export const indicators: Indicator[] = [
   { code: "COMM_03", programArea: "Community Health", subProgram: "Referral", indicator: "Community referrals received at facility", unit: "#", baseline: 40, target: 80 },
 ];
 
+// ─── INITIALIZE TIME-BASED TARGETS ────────────────────────────────────────
+// Auto-calculate and assign monthly, quarterly, and semiannual targets to all indicators
+indicators.forEach((ind) => {
+  const distributed = distributeAnnualTarget(ind.target);
+  ind.monthlyTarget = distributed.monthlyTarget;
+  ind.quarterlyTarget = distributed.quarterlyTarget;
+  ind.semiannualTarget = distributed.semiannualTarget;
+});
+
 // Generate sample monthly data with realistic patterns
 export function generateSampleMonthlyData(): MonthlyEntry[] {
   const entries: MonthlyEntry[] = [];
   const currentMonth = 5; // simulate data up to June
 
   indicators.forEach((ind) => {
-    const monthlyTarget = ind.target / 12;
+    const monthlyTarget = ind.monthlyTarget ?? ind.target / 12;
     MONTHS.forEach((month, idx) => {
       if (idx < currentMonth) {
         // Generate somewhat realistic data with variance
@@ -160,4 +204,75 @@ export function getActualYTD(code: string, monthlyData: MonthlyEntry[]): number 
 
 export function getProgramAreas(): string[] {
   return [...new Set(indicators.map((i) => i.programArea))];
+}
+
+// ─── PERIODIC PERFORMANCE CALCULATIONS ────────────────────────────────────
+
+export function getTargetByPeriod(indicator: Indicator, period: "monthly" | "quarterly" | "semiannual" | "annual"): number {
+  switch (period) {
+    case "monthly":
+      return indicator.monthlyTarget ?? indicator.target / 12;
+    case "quarterly":
+      return indicator.quarterlyTarget ?? indicator.target / 4;
+    case "semiannual":
+      return indicator.semiannualTarget ?? indicator.target / 2;
+    case "annual":
+    default:
+      return indicator.target;
+  }
+}
+
+export function getActualByPeriod(indicator: Indicator, period: "monthly" | "quarterly" | "semiannual" | "annual", monthlyData: MonthlyEntry[]): number {
+  const code = indicator.code;
+  const entries = monthlyData.filter((e) => e.code === code && e.actual !== null);
+
+  switch (period) {
+    case "monthly":
+      // For monthly, return the latest month's actual
+      return entries.length > 0 ? entries[entries.length - 1].actual ?? 0 : 0;
+    case "quarterly":
+      // Last 3 months
+      return entries.slice(-3).reduce((sum, e) => sum + (e.actual ?? 0), 0);
+    case "semiannual":
+      // Last 6 months
+      return entries.slice(-6).reduce((sum, e) => sum + (e.actual ?? 0), 0);
+    case "annual":
+    default:
+      // All available data
+      return entries.reduce((sum, e) => sum + (e.actual ?? 0), 0);
+  }
+}
+
+export function calculatePeriodicPerformance(
+  indicator: Indicator,
+  period: "monthly" | "quarterly" | "semiannual" | "annual",
+  monthlyData: MonthlyEntry[]
+): {
+  code: string;
+  indicator: string;
+  target: number;
+  actual: number;
+  variance: number;
+  variancePercent: number;
+} {
+  const target = getTargetByPeriod(indicator, period);
+  const actual = getActualByPeriod(indicator, period, monthlyData);
+  const variance = actual - target;
+  const variancePercent = target === 0 ? 0 : Math.round((variance / target) * 100);
+
+  return {
+    code: indicator.code,
+    indicator: indicator.indicator,
+    target,
+    actual,
+    variance,
+    variancePercent,
+  };
+}
+
+export function flagPerformanceIssue(
+  performance: { variancePercent: number },
+  threshold: number = 20
+): boolean {
+  return Math.abs(performance.variancePercent) > threshold;
 }
