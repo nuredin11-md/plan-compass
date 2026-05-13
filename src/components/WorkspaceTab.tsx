@@ -45,6 +45,15 @@ export default function WorkspaceTab({ monthlyData }: Props) {
   const [groupBy, setGroupBy] = useState<"department" | "indicator" | "status">("department");
 
   const areas = getProgramAreas();
+  // ከዚህ በታች ያሉትን በ WorkspaceTab ውስጥ ጨምር
+const [compareMode, setCompareMode] = useState(false);
+const [compareYear, setCompareYear] = useState<string | undefined>();
+const currentYear = "2026"; 
+
+// ለጊዜው ባዶ ዳታ እንዲይዙ ማድረግ (Crash እንዳያደርግ)
+const compareData = []; 
+const areaYoY = []; 
+const comparisonData = [];
 
   // ─── COMPUTED DATA ───
 
