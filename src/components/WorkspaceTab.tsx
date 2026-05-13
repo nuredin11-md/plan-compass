@@ -41,6 +41,8 @@ const AREA_COLORS = [
 
 export default function WorkspaceTab({ monthlyData }: Props) {
   const [selectedArea, setSelectedArea] = useState("all");
+  const [analysisPeriod, setAnalysisPeriod] = useState("monthly");
+  const [referenceMonth, setReferenceMonth] = useState("Sene (Oct)");
   const [viewMode, setViewMode] = useState("table");
   const [groupBy, setGroupBy] = useState<"department" | "indicator" | "status">("department");
 
@@ -284,6 +286,27 @@ const comparisonData = [];
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between print:hidden">
         <div className="flex flex-wrap gap-3 items-center">
           <Select value={selectedArea} onValueChange={setSelectedArea}>
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium uppercase text-slate-500">Period:</label>
+          <Select value={analysisPeriod} onValueChange={setAnalysisPeriod}>
+            <SelectTrigger className="w-[120px] bg-white"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="monthly">Monthly</SelectItem>
+              <SelectItem value="quarterly">Quarterly</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium uppercase text-slate-500">Month:</label>
+          <Select value={referenceMonth} onValueChange={setReferenceMonth}>
+            <SelectTrigger className="w-[120px] bg-white"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {MONTHS.map(m => (
+                <SelectItem key={m} value={m}>{m}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
             <SelectTrigger className="w-[220px]">
               <Filter className="h-4 w-4 mr-2" />
               <SelectValue placeholder="All Departments" />
