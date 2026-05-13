@@ -1,7 +1,10 @@
-import { useMemo } from "react";
-import { indicators, getStatus, getActualYTD, getProgramAreas, MONTHS, type MonthlyEntry } from "@/data/hospitalIndicators";
+import { useMemo, useState } from "react";
+import { indicators, getStatus, getProgramAreas, MONTHS, type MonthlyEntry } from "@/data/hospitalIndicators";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
-import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle, Info } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EmptyDataState } from "@/components/EmptyDataState";
+import { getActualByPeriod, getDataByPeriod, getMonthsInPeriod } from "@/lib/dataValidation";
 
 interface Props {
   monthlyData: MonthlyEntry[];
@@ -14,18 +17,23 @@ const STATUS_COLORS = {
 };
 
 export default function DashboardTab({ monthlyData }: Props) {
+  const [selectedPeriod, setSelectedPeriod] = useState<"monthly" | "quarterly" | "semiannual" | "annual">("quarterly");
+  const [selectedMonth, setSelectedMonth] = useState<number>(MONTHS.length - 1);
   const stats = useMemo(() => {
     let green = 0, yellow = 0, red = 0;
     indicators.forEach((ind) => {
-      const actual = getActualYTD(ind.code, monthlyData);
-      const percent = ind.target === 0 ? 0 : Math.round((actual / ind.target) * 100);
-      const s = getStatus(percent);
-      if (s === "green") green++;
-      else if (s === "yellow") yellow++;
-      else red++;
+      const actual = getActualByPeriod(monthlyData, ind.code, selectedPeriod, selectedMonth);
+      // Only count if data exists for this period
+      if (actual !== null) {
+        const percent = ind.target === 0 ? 0 : Math.round((actual / (ind.target / 4)) * 100);
+        const s = getStatus(percent);
+        if (s === "green") green++;
+        else if (s === "yellow") yellow++;
+        else red++;
+      }
     });
-    return { green, yellow, red, total: indicators.length };
-  }, [monthlyData]);
+    return { green, yellow, red, total: indicators.length, withData: green + yellow + red };
+  }, [monthlyData, selectedPeriod, selectedMonth]);
 
   const pieData = [
     { name: "On Track (≥90%)", value: stats.green, color: STATUS_COLORS.green },
@@ -38,21 +46,25 @@ export default function DashboardTab({ monthlyData }: Props) {
       const areaInds = indicators.filter((i) => i.programArea === area);
       let green = 0, yellow = 0, red = 0;
       areaInds.forEach((ind) => {
-        const actual = getActualYTD(ind.code, monthlyData);
-        const percent = ind.target === 0 ? 0 : Math.round((actual / ind.target) * 100);
-        const s = getStatus(percent);
-        if (s === "green") green++;
-        else if (s === "yellow") yellow++;
-        else red++;
+        const actual = getActualByPeriod(monthlyData, ind.code, selectedPeriod, selectedMonth);
+        // Only count if data exists
+        if (actual !== null) {
+          const percent = ind.target === 0 ? 0 : Math.round((actual / (ind.target / 4)) * 100);
+          const s = getStatus(percent);
+          if (s === "green") green++;
+          else if (s === "yellow") yellow++;
+          else red++;
+        }
       });
-      return { area, total: areaInds.length, green, yellow, red };
+      return { area, total: areaInds.length, green, yellow, red, withData: green + yellow + red };
     });
-  }, [monthlyData]);
+  }, [monthlyData, selectedPeriod, selectedMonth]);
 
   // Trend lines for key indicators
   const trendCodes = ["MCH_FP_01", "MCH_ANC_01", "CH_IMM_03", "CD_HIV_01", "MCH_DEL_01"];
   const trendData = useMemo(() => {
-    return MONTHS.slice(0, 6).map((month) => {
+    const periodMonths = getMonthsInPeriod(selectedPeriod, selectedMonth);
+    return periodMonths.map((month) => {
       const point: Record<string, string | number> = { month: month.substring(0, 3) };
       trendCodes.forEach((code) => {
         const entry = monthlyData.find((e) => e.code === code && e.month === month);
@@ -60,22 +72,78 @@ export default function DashboardTab({ monthlyData }: Props) {
       });
       return point;
     });
-  }, [monthlyData]);
+  }, [monthlyData, selectedPeriod, selectedMonth]);
 
   const TREND_COLORS = ["hsl(199, 89%, 38%)", "hsl(174, 62%, 40%)", "hsl(40, 90%, 50%)", "hsl(280, 60%, 50%)", "hsl(0, 72%, 51%)"];
 
+  // Check if any data exists for the selected period
+  const periodMonths = getMonthsInPeriod(selectedPeriod, selectedMonth);
+  const hasPeriodData = monthlyData.some(
+    (e) => periodMonths.includes(e.month) && e.actual !== null && e.actual !== undefined
+  );
+
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <SummaryCard icon={<CheckCircle2 className="h-5 w-5" />} label="Total Indicators" value={stats.total} colorClass="text-primary" />
-        <SummaryCard icon={<TrendingUp className="h-5 w-5" />} label="On Track" value={stats.green} colorClass="text-status-green" />
-        <SummaryCard icon={<AlertTriangle className="h-5 w-5" />} label="At Risk" value={stats.yellow} colorClass="text-status-yellow" />
-        <SummaryCard icon={<XCircle className="h-5 w-5" />} label="Off Track" value={stats.red} colorClass="text-status-red" />
+      {/* Period Selector */}
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between rounded-lg border bg-card/50 p-4 backdrop-blur-sm">
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center flex-1">
+          <label className="text-sm font-medium whitespace-nowrap">Analysis Period:</label>
+          <Select value={selectedPeriod} onValueChange={(v) => setSelectedPeriod(v as typeof selectedPeriod)}>
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="monthly">Monthly</SelectItem>
+              <SelectItem value="quarterly">Quarterly</SelectItem>
+              <SelectItem value="semiannual">Semi-annual</SelectItem>
+              <SelectItem value="annual">Annual</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {(selectedPeriod === "monthly" || selectedPeriod === "quarterly" || selectedPeriod === "semiannual") && (
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium whitespace-nowrap">Reference Month:</label>
+            <Select value={String(selectedMonth)} onValueChange={(v) => setSelectedMonth(parseInt(v))}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MONTHS.map((month, idx) => (
+                  <SelectItem key={month} value={String(idx)}>
+                    {month}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pie chart */}
+      {/* Data Availability Warning */}
+      {!hasPeriodData && (
+        <div className="p-4 rounded-lg border-l-4 border-l-orange-500 bg-orange-50 dark:bg-orange-950/30 flex items-start gap-3">
+          <Info className="h-5 w-5 mt-0.5 flex-shrink-0 text-orange-600 dark:text-orange-400" />
+          <div>
+            <p className="text-sm font-medium text-orange-900 dark:text-orange-200">No Data Available</p>
+            <p className="text-sm text-orange-800 dark:text-orange-300 mt-1">
+              No data has been recorded for the selected {selectedPeriod}. Please select a different period or ensure data entry is completed.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {hasPeriodData ? (
+        <>
+          {/* Summary cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <SummaryCard icon={<CheckCircle2 className="h-5 w-5" />} label="Total Indicators" value={stats.total} colorClass="text-primary" />
+            <SummaryCard icon={<TrendingUp className="h-5 w-5" />} label="With Data" value={stats.withData} colorClass="text-status-green" />
+            <SummaryCard icon={<AlertTriangle className="h-5 w-5" />} label="At Risk" value={stats.yellow} colorClass="text-status-yellow" />
+            <SummaryCard icon={<XCircle className="h-5 w-5" />} label="Off Track" value={stats.red} colorClass="text-status-red" />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Pie chart */}
         <div className="glass-card rounded-xl border bg-card/50 p-6 backdrop-blur-md hover:shadow-lg transition-all duration-300">
           <h3 className="font-bold text-lg mb-4 bg-gradient-to-r from-primary to-cyan-500 bg-clip-text text-transparent">Overall Performance Distribution</h3>
           <div className="h-[280px]">
@@ -134,51 +202,55 @@ export default function DashboardTab({ monthlyData }: Props) {
       </div>
 
       {/* Traffic light table */}
-      <div className="glass-card rounded-xl border bg-card/50 p-6 backdrop-blur-md">
-        <h3 className="font-bold text-lg mb-6 bg-gradient-to-r from-primary to-cyan-500 bg-clip-text text-transparent">Program Area Performance Summary</h3>
-        <div className="overflow-x-auto rounded-lg border border-border/50">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-gradient-to-r from-primary/10 via-transparent to-cyan-500/10">
-                <th className="table-header text-left p-4 font-bold">Program Area</th>
-                <th className="table-header text-center p-4 font-bold">Total</th>
-                <th className="table-header text-center p-4 font-bold">🟢 On Track</th>
-                <th className="table-header text-center p-4 font-bold">🟡 At Risk</th>
-                <th className="table-header text-center p-4 font-bold">🔴 Off Track</th>
-                <th className="table-header text-center p-4 font-bold">Achievement</th>
-              </tr>
-            </thead>
-            <tbody>
-              {programSummary.map((ps, i) => {
-                const achievePercent = ps.total > 0 ? Math.round((ps.green / ps.total) * 100) : 0;
-                return (
-                  <tr key={ps.area} className={`border-b transition-all duration-200 hover:bg-primary/5 ${i % 2 === 0 ? "" : "bg-muted/5"}`}>
-                    <td className="p-4 font-semibold text-foreground">{ps.area}</td>
-                    <td className="p-4 text-center font-mono font-bold text-lg">{ps.total}</td>
-                    <td className="p-4 text-center"><span className="status-badge-green">{ps.green}</span></td>
-                    <td className="p-4 text-center"><span className="status-badge-yellow">{ps.yellow}</span></td>
-                    <td className="p-4 text-center"><span className="status-badge-red">{ps.red}</span></td>
-                    <td className="p-4 text-center">
-                      <div className="flex items-center justify-center gap-3">
-                        <div className="w-24 h-2.5 rounded-full bg-muted/50 overflow-hidden shadow-inner">
-                          <div
-                            className="h-full rounded-full transition-all duration-500 shadow-lg"
-                            style={{
-                              width: `${achievePercent}%`,
-                              background: achievePercent >= 90 ? `linear-gradient(90deg, ${STATUS_COLORS.green}, ${STATUS_COLORS.green})` : achievePercent >= 70 ? `linear-gradient(90deg, ${STATUS_COLORS.yellow}, ${STATUS_COLORS.yellow})` : `linear-gradient(90deg, ${STATUS_COLORS.red}, ${STATUS_COLORS.red})`,
-                            }}
-                          />
-                        </div>
-                        <span className="font-bold text-xs w-8 text-right">{achievePercent}%</span>
-                      </div>
-                    </td>
+          <div className="glass-card rounded-xl border bg-card/50 p-6 backdrop-blur-md">
+            <h3 className="font-bold text-lg mb-6 bg-gradient-to-r from-primary to-cyan-500 bg-clip-text text-transparent">Program Area Performance Summary</h3>
+            <div className="overflow-x-auto rounded-lg border border-border/50">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-gradient-to-r from-primary/10 via-transparent to-cyan-500/10">
+                    <th className="table-header text-left p-4 font-bold">Program Area</th>
+                    <th className="table-header text-center p-4 font-bold">Total</th>
+                    <th className="table-header text-center p-4 font-bold">🟢 On Track</th>
+                    <th className="table-header text-center p-4 font-bold">🟡 At Risk</th>
+                    <th className="table-header text-center p-4 font-bold">🔴 Off Track</th>
+                    <th className="table-header text-center p-4 font-bold">Achievement</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                </thead>
+                <tbody>
+                  {programSummary.map((ps, i) => {
+                    const achievePercent = ps.total > 0 ? Math.round((ps.green / ps.total) * 100) : 0;
+                    return (
+                      <tr key={ps.area} className={`border-b transition-all duration-200 hover:bg-primary/5 ${i % 2 === 0 ? "" : "bg-muted/5"}`}>
+                        <td className="p-4 font-semibold text-foreground">{ps.area}</td>
+                        <td className="p-4 text-center font-mono font-bold text-lg">{ps.total}</td>
+                        <td className="p-4 text-center"><span className="status-badge-green">{ps.green}</span></td>
+                        <td className="p-4 text-center"><span className="status-badge-yellow">{ps.yellow}</span></td>
+                        <td className="p-4 text-center"><span className="status-badge-red">{ps.red}</span></td>
+                        <td className="p-4 text-center">
+                          <div className="flex items-center justify-center gap-3">
+                            <div className="w-24 h-2.5 rounded-full bg-muted/50 overflow-hidden shadow-inner">
+                              <div
+                                className="h-full rounded-full transition-all duration-500 shadow-lg"
+                                style={{
+                                  width: `${achievePercent}%`,
+                                  background: achievePercent >= 90 ? `linear-gradient(90deg, ${STATUS_COLORS.green}, ${STATUS_COLORS.green})` : achievePercent >= 70 ? `linear-gradient(90deg, ${STATUS_COLORS.yellow}, ${STATUS_COLORS.yellow})` : `linear-gradient(90deg, ${STATUS_COLORS.red}, ${STATUS_COLORS.red})`,
+                                }}
+                              />
+                            </div>
+                            <span className="font-bold text-xs w-8 text-right">{achievePercent}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      ) : (
+        <EmptyDataState type="period" period={selectedPeriod} />
+      )}
     </div>
   );
 }
