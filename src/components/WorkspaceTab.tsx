@@ -804,7 +804,7 @@ const comparisonData = [];
             </div>
           </TabsContent>
         )}
-        <TabsContent value="recognition" className="mt-4"><RecognitionBoard monthlyData={monthlyData} /></TabsContent>
+        <TabsContent value="recognition" className="mt-4"><RecognitionBoard monthlyData={monthlyData} selectedPeriod={undefined} /></TabsContent>
       </Tabs>
 
       {/* Top & Bottom Performers */}
