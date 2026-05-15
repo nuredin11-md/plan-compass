@@ -1,205 +1,176 @@
-import React, { useMemo, useState, useCallback } from "react";
-import RecognitionBoard from "./RecognitionBoard";
+import React, { useState, useMemo } from 'react';
 import { 
-  Table2, BarChart3, PieChartIcon, TrendingUp, Award, 
-  Calendar, Filter, FileText, FileSpreadsheet, FileDown, Printer, ChevronDown 
-} from "lucide-react";
+  PieChart, Pie, Cell, AreaChart, Area, XAxis, YAxis, 
+  CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar 
+} from 'recharts';
 import { 
-  indicators, getActualYTD, getStatus, getProgramAreas, MONTHS, type MonthlyEntry 
-} from "@/data/hospitalIndicators";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
-  PieChart, Pie, AreaChart, Area
-} from "recharts";
-import { exportToCSV, exportToExcel, exportToPDF } from "@/lib/exportUtils";
-import { toast } from "sonner";
+  TrendingUp, Filter, Printer, Table as TableIcon, 
+  BarChart3, PieChart as PieIcon, Activity, Trophy, Calendar,
+  ChevronRight, AlertCircle, CheckCircle2
+} from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import RecognitionBoard from './RecognitionBoard';
 
-interface Props {
-  monthlyData: MonthlyEntry[];
-}
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
-const STATUS_COLORS: Record<string, string> = {
-  green: "#22895a",
-  yellow: "#cc8000",
-  red: "#dc2626",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  green: "On Track",
-  yellow: "At Risk",
-  red: "Off Track",
-};
-
-export default function WorkspaceTab({ monthlyData }: Props) {
+export default function WorkspaceTab({ monthlyData }: { monthlyData: any[] }) {
+  const [activeTab, setActiveTab] = useState('table');
+  const [analysisPeriod, setAnalysisPeriod] = useState('Monthly');
   const [selectedYear, setSelectedYear] = useState('2016');
   const [selectedMonth, setSelectedMonth] = useState('Hamle');
+  const [selectedQuarter, setSelectedQuarter] = useState('Q1');
+  const [departmentFilter, setDepartmentFilter] = useState('All');
+
   const ethiopianMonths = ['Hamle', 'Nehasse', 'Meskerem', 'Tikimt', 'Hidar', 'Tahsas', 'Tirr', 'Yekatit', 'Megabit', 'Miazia', 'Ginbot', 'Sene'];
+  const quarters = ['Q1 (Hamle-Meskerem)', 'Q2 (Tikimt-Tahsas)', 'Q3 (Tirr-Megabit)', 'Q4 (Miazia-Sene)'];
   const years = ['2016', '2017', '2018'];
-  const [selectedArea, setSelectedArea] = useState("all");
-  const [analysisPeriod, setAnalysisPeriod] = useState("monthly");
-  const [viewMode, setViewMode] = useState("table");
-  const [groupBy, setGroupBy] = useState<"indicator" | "status">("indicator");
 
-  const areas = getProgramAreas();
+  // ዳታውን በወር እና በዓመት ማጣሪያ
+  const filteredData = useMemo(() => {
+    let data = monthlyData;
+    if (analysisPeriod === 'Monthly') {
+      data = data.filter(d => d.month === selectedMonth);
+    }
+    if (departmentFilter !== 'All') {
+      data = data.filter(d => d.department === departmentFilter);
+    }
+    return data;
+  }, [monthlyData, selectedMonth, selectedQuarter, analysisPeriod, departmentFilter]);
 
-  // ─── COMPUTED DATA (ባለበት ይቀጥላል) ───
-  const filteredMonthlyData = useMemo(() => monthlyData.filter(d => d.month === selectedMonth), [monthlyData, selectedMonth]);
-
-  const indicatorPerformance = useMemo(() => {
-    const filterInds = selectedArea === "all" ? indicators : indicators.filter((i) => i.programArea === selectedArea);
-    return filterInds.map((ind) => {
-      const actual = getActualYTD(ind.code, filteredMonthlyData);
-      const percent = ind.target === 0 ? 0 : Math.round((actual / ind.target) * 100);
-      const status = getStatus(percent);
-      return { ...ind, actual, percent, status, statusLabel: STATUS_LABELS[status], gap: ind.target - actual };
-    });
-  }, [monthlyData, selectedArea]);
-
-  const summaryStats = useMemo(() => {
-    const total = indicatorPerformance.length;
-    const onTrack = indicatorPerformance.filter((d) => d.status === "green").length;
-    const avgPercent = total > 0 ? Math.round(indicatorPerformance.reduce((s, d) => s + d.percent, 0) / total) : 0;
-    return { total, onTrack, avgPercent };
-  }, [indicatorPerformance]);
-
-  // 3D Button Style Generator
-  const getTabStyle = (tab: string, activeColor: string) => {
-    const isActive = viewMode === tab;
-    return `
-      flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-black uppercase text-xs transition-all duration-200
-      ${isActive 
-        ? `bg-${activeColor}-600 text-white shadow-[0_5px_0_0_#1e3a8a] translate-y-[-2px] border-b-2 border-white/20` 
-        : 'bg-slate-100 text-slate-500 hover:bg-slate-200 shadow-[0_2px_0_0_#cbd5e1] hover:translate-y-[-1px]'
-      }
-    `;
-  };
+  const stats = useMemo(() => {
+    const total = filteredData.length;
+    const onTrack = filteredData.filter(d => (d.actual / d.target) >= 0.9).length;
+    const offTrack = filteredData.filter(d => (d.actual / d.target) < 0.7).length;
+    const atRisk = total - onTrack - offTrack;
+    const avgAchv = total > 0 ? (filteredData.reduce((acc, curr) => acc + (curr.actual / curr.target), 0) / total) * 100 : 0;
+    
+    return { total, onTrack, atRisk, offTrack, avgAchv };
+  }, [filteredData]);
 
   return (
-    <div className="space-y-6">
-      {/* Top Filter Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-3xl border shadow-sm print:hidden">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Period Selector (Advanced) */}
-          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-2xl border">
-            <Calendar className="h-4 w-4 text-blue-600" />
-            <span className="text-[10px] font-black text-slate-400 uppercase">Period:</span>
-            <Select value={selectedYear} onValueChange={setSelectedYear}>
-              <SelectTrigger className="h-7 w-[90px] bg-white font-bold text-xs"> <SelectValue placeholder="Year" /> </SelectTrigger>
-              <SelectContent> {years.map(y => <SelectItem key={y} value={y}>{y} EFY</SelectItem>)} </SelectContent>
-            </Select>
-            <Select value={analysisPeriod} onValueChange={setAnalysisPeriod}>
-              <SelectTrigger className="h-7 border-none bg-transparent font-bold text-xs w-[130px] focus:ring-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="monthly">Monthly (Hamle-Sene)</SelectItem>
-                <SelectItem value="quarterly">Quarterly (Q1-Q4)</SelectItem>
-                <SelectItem value="sixmonth">6 Months (Half Year)</SelectItem>
-                <SelectItem value="annual">Annually (Full Year)</SelectItem>
-                <SelectItem value="custom">Custom Range...</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Department Filter (ያልተነካው) */}
-          <Select value={selectedArea} onValueChange={setSelectedArea}>
-            <SelectTrigger className="w-[200px] h-10 rounded-2xl font-bold text-xs bg-white">
-              <Filter className="h-3.5 w-3.5 mr-2 text-blue-600" />
-              <SelectValue placeholder="Department" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Departments</SelectItem>
-              {areas.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-            </SelectContent>
-          </Select>
-
-          {/* Status/Indicator Filter (ዲፓርትመንት የተወገደበት) */}
-          <Select value={groupBy} onValueChange={(v) => setGroupBy(v as any)}>
-            <SelectTrigger className="w-[160px] h-10 rounded-2xl font-bold text-xs bg-white">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="indicator">By Indicator</SelectItem>
-              <SelectItem value="status">By Status</SelectItem>
-            </SelectContent>
-          </Select>
+    <div className="space-y-6 animate-in fade-in duration-500">
+      {/* Filters Header */}
+      <div className="flex flex-wrap gap-4 items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+        <div className="flex items-center gap-2 pr-4 border-r border-slate-100">
+          <Calendar className="w-5 h-5 text-blue-500" />
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Filters</span>
         </div>
 
-        {/* Export Buttons */}
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => exportToPDF("Report", [], [], "file")} className="rounded-xl font-bold text-[10px]"><FileDown className="h-3 w-3 mr-1" /> PDF</Button>
-          <Button variant="outline" size="sm" onClick={() => window.print()} className="rounded-xl font-bold text-[10px]"><Printer className="h-3 w-3 mr-1" /> PRINT</Button>
-        </div>
-      </div>
+        <Select value={analysisPeriod} onValueChange={setAnalysisPeriod}>
+          <SelectTrigger className="h-9 w-[130px] font-medium"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Monthly">Monthly</SelectItem>
+            <SelectItem value="Quarterly">Quarterly</SelectItem>
+          </SelectContent>
+        </Select>
 
-      {/* Stats Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="rounded-[2rem] shadow-sm border-none bg-blue-50/50"><CardContent className="p-6 text-center"><p className="text-3xl font-black text-blue-600">{summaryStats.total}</p><p className="text-[10px] font-bold text-slate-500 uppercase">Indicators</p></CardContent></Card>
-        <Card className="rounded-[2rem] shadow-sm border-none bg-emerald-50/50"><CardContent className="p-6 text-center"><p className="text-3xl font-black text-emerald-600">{summaryStats.onTrack}</p><p className="text-[10px] font-bold text-slate-500 uppercase">On Track</p></CardContent></Card>
-        <Card className="rounded-[2rem] shadow-sm border-none bg-blue-600 text-white"><CardContent className="p-6 text-center"><p className="text-3xl font-black">{summaryStats.avgPercent}%</p><p className="text-[10px] font-bold opacity-80 uppercase">Performance</p></CardContent></Card>
-      </div>
+        <Select value={selectedYear} onValueChange={setSelectedYear}>
+          <SelectTrigger className="h-9 w-[110px] font-medium"><SelectValue /></SelectTrigger>
+          <SelectContent>{years.map(y => <SelectItem key={y} value={y}>{y} EFY</SelectItem>)}</SelectContent>
+        </Select>
 
-      {/* 3D Tab Navigation */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 bg-slate-50/50 p-2 rounded-[2.5rem] border border-slate-100">
-        <button onClick={() => setViewMode('table')} className={getTabStyle('table', 'blue')}>
-          <Table2 className="h-4 w-4" /> Table
-        </button>
-        <button onClick={() => setViewMode('bar')} className={getTabStyle('bar', 'indigo')}>
-          <BarChart3 className="h-4 w-4" /> Bar Chart
-        </button>
-        <button onClick={() => setViewMode('pie')} className={getTabStyle('pie', 'pink')}>
-          <PieChartIcon className="h-4 w-4" /> Pie Chart
-        </button>
-        <button onClick={() => setViewMode('trend')} className={getTabStyle('trend', 'emerald')}>
-          <TrendingUp className="h-4 w-4" /> Trend
-        </button>
-        <button onClick={() => setViewMode('recognition')} className={getTabStyle('recognition', 'amber')}>
-          <Award className="h-4 w-4" /> Recognition
-        </button>
-      </div>
-
-      {/* Content Area */}
-      <div className="min-h-[500px]">
-        {viewMode === "table" && (
-          <Card className="rounded-[2rem] border-none shadow-xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="bg-slate-50 border-b border-slate-100">
-                  <tr>
-                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase">Indicator</th>
-                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase text-center">Target</th>
-                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase text-center">Actual</th>
-                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase text-center">Achv %</th>
-                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {indicatorPerformance.map((d) => (
-                    <tr key={d.code} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="p-4 font-bold text-slate-700 text-xs truncate max-w-[300px]">{d.indicator}</td>
-                      <td className="p-4 text-center font-mono text-xs">{d.target}</td>
-                      <td className="p-4 text-center font-mono text-xs font-black">{d.actual}</td>
-                      <td className="p-4 text-center font-black text-blue-600 text-xs">{d.percent}%</td>
-                      <td className="p-4 text-center">
-                        <span className="px-3 py-1 rounded-full text-[9px] font-black text-white uppercase" style={{backgroundColor: STATUS_COLORS[d.status]}}>{d.statusLabel}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+        {analysisPeriod === 'Monthly' && (
+          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+            <SelectTrigger className="h-9 w-[140px] font-medium"><SelectValue /></SelectTrigger>
+            <SelectContent>{ethiopianMonths.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
+          </Select>
         )}
 
-        {viewMode === "recognition" && <RecognitionBoard monthlyData={filteredMonthlyData} selectedPeriod={`${selectedMonth} ${selectedYear}`} />}
-        
-        {/* Charts & Trends (ባለበት ይቀጥላል) */}
-        {viewMode === "bar" && <div className="p-20 text-center text-slate-300 font-black italic uppercase">Bar Chart Content Loading...</div>}
-        {viewMode === "pie" && <div className="p-20 text-center text-slate-300 font-black italic uppercase">Pie Chart Content Loading...</div>}
-        {viewMode === "trend" && <div className="p-20 text-center text-slate-300 font-black italic uppercase">Trend Analysis Loading...</div>}
+        {analysisPeriod === 'Quarterly' && (
+          <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
+            <SelectTrigger className="h-9 w-[190px] font-medium"><SelectValue /></SelectTrigger>
+            <SelectContent>{quarters.map(q => <SelectItem key={q} value={q}>{q}</SelectItem>)}</SelectContent>
+          </Select>
+        )}
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        {[
+          { label: 'Total Indicators', value: stats.total, color: 'blue' },
+          { label: 'On Track', value: stats.onTrack, color: 'green' },
+          { label: 'At Risk', value: stats.atRisk, color: 'amber' },
+          { label: 'Off Track', value: stats.offTrack, color: 'red' },
+          { label: 'Avg Achv %', value: `${stats.avgAchv.toFixed(1)}%`, color: 'indigo' }
+        ].map((s, i) => (
+          <div key={i} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+            <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">{s.label}</p>
+            <p className={`text-2xl font-black text-${s.color}-600`}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Modern Tabs Navigation */}
+      <div className="flex p-1 bg-slate-100 rounded-xl w-fit">
+        {[
+          { id: 'table', icon: TableIcon, label: 'Table' },
+          { id: 'chart', icon: BarChart3, label: 'Bar Chart' },
+          { id: 'recognition', icon: Trophy, label: 'Recognition' }
+        ].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            className={`flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+              activeTab === t.id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <t.icon className="w-4 h-4" /> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Main Content Area */}
+      <div className="bg-white p-6 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 min-h-[400px]">
+        {activeTab === 'table' && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="pb-4 font-bold text-slate-400 uppercase text-[10px]">Indicator</th>
+                  <th className="pb-4 font-bold text-slate-400 uppercase text-[10px]">Target</th>
+                  <th className="pb-4 font-bold text-slate-400 uppercase text-[10px]">Actual</th>
+                  <th className="pb-4 font-bold text-slate-400 uppercase text-[10px]">Achv %</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filteredData.map((row, i) => (
+                  <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="py-4 text-sm font-semibold text-slate-700">{row.indicator}</td>
+                    <td className="py-4 text-sm text-slate-500">{row.target}</td>
+                    <td className="py-4 text-sm font-bold text-slate-900">{row.actual}</td>
+                    <td className="py-4 text-sm">
+                      <span className={`px-2 py-1 rounded-full font-bold ${
+                        (row.actual/row.target) >= 0.9 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                      }`}>
+                        {((row.actual/row.target) * 100).toFixed(1)}%
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {activeTab === 'chart' && (
+          <div className="h-[400px] w-full pt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={filteredData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="indicator" hide />
+                <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                <Tooltip 
+                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                />
+                <Bar dataKey="actual" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {activeTab === 'recognition' && (
+          <RecognitionBoard monthlyData={filteredData} selectedPeriod={`${selectedMonth} ${selectedYear}`} />
+        )}
       </div>
     </div>
   );
