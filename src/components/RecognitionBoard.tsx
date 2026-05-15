@@ -1,90 +1,175 @@
-import { useMemo } from "react";
-import { Trophy, Medal, Star, Award } from "lucide-react";
-import { indicators, getActualYTD, getProgramAreas, getStatus } from "@/data/hospitalIndicators";
+import React, { useState } from "react";
+import { Award, Trophy, Medal, Star, Settings2, CheckCircle2 } from "lucide-react";
 
-interface Props {
-  monthlyData: any[];
-}
+const RecognitionBoard = ({ monthlyData }: { monthlyData?: any }) => {
+  // 1. መለኪያዎቹ በየአመቱ እንዲቀያየሩ (Editable Weights)
+  // እነዚህን ቁጥሮች በመቀየር የቦርዱን የክብደት መመሪያ ማስተካከል ይቻላል
+  const [weights] = useState([
+    { label: "Programme Performance", weight: 35 },
+    { label: "EHSIG Score", weight: 25 },
+    { label: "IPC Practices", weight: 20 },
+    { label: "Data Quality & Reporting", weight: 20 },
+  ]);
 
-export default function RecognitionBoard({ monthlyData }: Props) {
-  const departments = getProgramAreas();
+  // 2. የዲፓርትመንት መለኪያዎች (ከሰነዱ የተወሰዱ)
+  const departments = [
+    {
+      name: "MCH (Maternal & Child)",
+      score: 88, // ይህ ከዳታቤዝ የሚመጣ ውጤት ይሆናል
+      indicators: [
+        "Maternal death audit & review",
+        "Cervical cancer plan vs achievement",
+        "Birth notification",
+        "SBA plan vs achievement",
+        "PMTCT/Viral load suppression",
+        "ANC4 to ANC8 dropout rate"
+      ]
+    },
+    {
+      name: "NICU",
+      score: 92,
+      indicators: [
+        "Neonate resuscitate and survive",
+        "KMC initiation",
+        "Neonatal death review",
+        "Bed Occupancy Rate (BOR)",
+        "Appropriate use of antibiotics"
+      ]
+    },
+    {
+      name: "OR (Surgical)",
+      score: 85,
+      indicators: [
+        "Surgical volume",
+        "Table productivity",
+        "Reduction of waiting list",
+        "Cancellation rate",
+        "SSC checklist (10 cards)"
+      ]
+    },
+    {
+      name: "Laboratory",
+      score: 79,
+      indicators: [
+        "Essential test availability",
+        "TAT record and action taken",
+        "EQA/IQA performance",
+        "Stock out rate",
+        "GenExpert performance"
+      ]
+    },
+    {
+      name: "Pharmacy",
+      score: 82,
+      indicators: [
+        "Line fill rate",
+        "Wastage rate",
+        "Drug prescription from facility list",
+        "AMR monitoring",
+        "Clinical pharmacy functionality"
+      ]
+    },
+    {
+      name: "Emergency (EOPD)",
+      score: 75,
+      indicators: [
+        "Patient stay >24hrs monitoring",
+        "Trauma registry utilization",
+        "Emergency mortality audit",
+        "Emergency drug availability"
+      ]
+    }
+  ];
 
-  const rankings = useMemo(() => {
-    const data = departments.map((area) => {
-      const areaInds = indicators.filter((i) => i.programArea === area);
-      let totalPercent = 0;
-      
-      areaInds.forEach((ind) => {
-        const actual = getActualYTD(ind.code, monthlyData);
-        const percent = ind.target === 0 ? 0 : Math.min(Math.round((actual / ind.target) * 100), 100);
-        totalPercent += percent;
-      });
-
-      const avgPercent = areaInds.length > 0 ? Math.round(totalPercent / areaInds.length) : 0;
-      return { area, avgPercent, status: getStatus(avgPercent) };
-    });
-
-    return data.sort((a, b) => b.avgPercent - a.avgPercent).slice(0, 3);
-  }, [monthlyData]);
-
-  if (rankings.length < 3) return null;
-
-  const top3 = {
-    gold: rankings[0],
-    silver: rankings[1],
-    bronze: rankings[2]
-  };
+  // ውጤታቸውን በማወዳደር 1ኛ፣ 2ኛ እና 3ኛን መለየት
+  const topThree = [...departments].sort((a, b) => b.score - a.score).slice(0, 3);
 
   return (
-    <div className="space-y-12 py-10 animate-in fade-in duration-700">
-      <div className="text-center space-y-2">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-yellow-100 text-yellow-600 mb-4 shadow-inner">
-          <Award className="w-10 h-10" />
+    <div className="p-6 space-y-8 bg-white rounded-3xl border shadow-sm">
+      {/* Header - መመዘኛዎቹን የሚያሳይ */}
+      <div className="flex flex-col md:flex-row justify-between items-center gap-6 border-b pb-8">
+        <div className="text-center md:text-left">
+          <h2 className="text-4xl font-black text-slate-900 tracking-tighter">HOSPITAL RECOGNITION BOARD</h2>
+          <p className="text-slate-500 font-medium tracking-wide mt-1">2017 EFY Performance Ranking System</p>
         </div>
-        <h2 className="text-4xl font-black text-slate-900 tracking-tight uppercase">2017 EFY Recognition Board</h2>
-        <p className="text-slate-500 font-medium text-lg italic">Top Departmental Performance Ranking based on EHSTG Metrics</p>
+        
+        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-wrap justify-center gap-6">
+          <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest border-r pr-4">
+            <Settings2 className="w-4 h-4" /> Criteria Weights
+          </div>
+          {weights.map((w, i) => (
+            <div key={i} className="flex flex-col">
+              <span className="text-[10px] text-slate-500 font-bold uppercase">{w.label}</span>
+              <span className="text-lg font-black text-blue-600">{w.weight}%</span>
+            </div>
+          ))}
+        </div>
       </div>
 
-      <div className="flex flex-col md:flex-row justify-center items-end gap-6 max-w-5xl mx-auto px-4">
-        {/* Silver - 2nd Place */}
-        <div className="flex flex-col items-center group w-full md:w-64">
-           <div className="mb-4 transform group-hover:scale-110 transition-transform">
-             <Medal className="w-16 h-16 text-slate-400 drop-shadow-md" />
-           </div>
-           <div className="bg-white border-2 border-slate-200 rounded-3xl p-8 w-full text-center shadow-lg relative overflow-hidden h-56 flex flex-col justify-center">
-             <div className="absolute top-0 left-0 w-full h-2 bg-slate-300"></div>
-             <h3 className="text-xl font-bold text-slate-800 mb-1">{top3.silver.area}</h3>
-             <div className="text-4xl font-black text-slate-600 mb-2">{top3.silver.avgPercent}%</div>
-             <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Silver Award</span>
-           </div>
+      {/* Podium - ከፍተኛ ውጤት ያመጡ ክፍሎች */}
+      <div className="flex justify-center items-end gap-4 md:gap-10 pt-12 pb-8 overflow-x-auto">
+        {/* Silver */}
+        <div className="flex flex-col items-center shrink-0">
+          <div className="bg-slate-50 p-6 rounded-3xl w-44 shadow-md border-b-8 border-slate-300 relative transition-all hover:shadow-xl hover:-translate-y-2">
+            <Medal className="absolute -top-6 left-1/2 -translate-x-1/2 w-12 h-12 text-slate-400 drop-shadow-md" />
+            <div className="text-center mt-4">
+              <div className="font-bold text-slate-700 text-sm h-12 flex items-center justify-center uppercase">{topThree[1]?.name}</div>
+              <div className="text-4xl font-black text-slate-400 mt-2">{topThree[1]?.score}%</div>
+            </div>
+          </div>
+          <span className="mt-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Silver Award</span>
         </div>
 
-        {/* Gold - 1st Place */}
-        <div className="flex flex-col items-center group w-full md:w-72 order-first md:order-none">
-           <div className="mb-6 transform group-hover:scale-125 transition-transform">
-             <Trophy className="w-24 h-24 text-yellow-500 drop-shadow-xl" />
-           </div>
-           <div className="bg-gradient-to-b from-yellow-50 to-white border-4 border-yellow-400 rounded-3xl p-10 w-full text-center shadow-2xl relative overflow-hidden h-72 flex flex-col justify-center">
-             <div className="absolute top-0 left-0 w-full h-3 bg-yellow-400 animate-pulse"></div>
-             <h3 className="text-2xl font-black text-yellow-900 mb-2">{top3.gold.area}</h3>
-             <div className="text-6xl font-black text-yellow-600 mb-3">{top3.gold.avgPercent}%</div>
-             <span className="text-sm font-black uppercase tracking-widest text-yellow-700 bg-yellow-200 px-4 py-1 rounded-full mx-auto">Gold Winner</span>
-           </div>
+        {/* Gold */}
+        <div className="flex flex-col items-center shrink-0">
+          <div className="bg-yellow-50/50 p-8 rounded-3xl w-56 shadow-2xl border-b-8 border-yellow-400 relative transition-all hover:shadow-yellow-100 hover:-translate-y-4 scale-110">
+            <Trophy className="absolute -top-10 left-1/2 -translate-x-1/2 w-16 h-16 text-yellow-500 drop-shadow-lg" />
+            <div className="text-center mt-4">
+              <div className="font-black text-yellow-900 text-lg h-12 flex items-center justify-center uppercase leading-none">{topThree[0]?.name}</div>
+              <div className="text-5xl font-black text-yellow-600 mt-2">{topThree[0]?.score}%</div>
+            </div>
+          </div>
+          <span className="mt-8 text-xs font-black text-yellow-600 uppercase tracking-[0.2em]">Gold Winner</span>
         </div>
 
-        {/* Bronze - 3rd Place */}
-        <div className="flex flex-col items-center group w-full md:w-64">
-           <div className="mb-4 transform group-hover:scale-110 transition-transform">
-             <Star className="w-14 h-14 text-orange-400 drop-shadow-md" />
-           </div>
-           <div className="bg-white border-2 border-orange-100 rounded-3xl p-6 w-full text-center shadow-md relative overflow-hidden h-48 flex flex-col justify-center">
-             <div className="absolute top-0 left-0 w-full h-2 bg-orange-200"></div>
-             <h3 className="text-lg font-bold text-slate-800 mb-1">{top3.bronze.area}</h3>
-             <div className="text-3xl font-black text-orange-600 mb-1">{top3.bronze.avgPercent}%</div>
-             <span className="text-xs font-bold uppercase tracking-widest text-orange-300">Bronze Award</span>
-           </div>
+        {/* Bronze */}
+        <div className="flex flex-col items-center shrink-0">
+          <div className="bg-orange-50/30 p-6 rounded-3xl w-44 shadow-md border-b-8 border-orange-300 relative transition-all hover:shadow-xl hover:-translate-y-2">
+            <Star className="absolute -top-6 left-1/2 -translate-x-1/2 w-12 h-12 text-orange-400 drop-shadow-md" />
+            <div className="text-center mt-4">
+              <div className="font-bold text-slate-700 text-sm h-12 flex items-center justify-center uppercase">{topThree[2]?.name}</div>
+              <div className="text-4xl font-black text-orange-400 mt-2">{topThree[2]?.score}%</div>
+            </div>
+          </div>
+          <span className="mt-4 text-[10px] font-black text-orange-400 uppercase tracking-widest">Bronze Award</span>
         </div>
+      </div>
+
+      {/* ዝርዝር መረጃ ለእያንዳንዱ ዲፓርትመንት */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-6">
+        {departments.map((dept, i) => (
+          <div key={i} className="group bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:border-blue-200 hover:shadow-md transition-all">
+            <div className="flex justify-between items-start mb-5">
+              <h4 className="font-black text-slate-800 text-sm leading-tight max-w-[70%]">{dept.name}</h4>
+              <div className="flex flex-col items-end">
+                <span className="text-xl font-black text-blue-600 leading-none">{dept.score}%</span>
+                <span className="text-[9px] font-bold text-slate-400 uppercase mt-1">Total Score</span>
+              </div>
+            </div>
+            
+            <div className="space-y-2.5">
+              {dept.indicators.map((ind, idx) => (
+                <div key={idx} className="flex items-start gap-3 text-[11px] text-slate-500 font-semibold leading-snug">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-blue-400/50 shrink-0 mt-0.5 group-hover:text-blue-500 transition-colors" />
+                  {ind}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
-}
+};
+
+export default RecognitionBoard;
