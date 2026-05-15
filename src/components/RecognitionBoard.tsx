@@ -16,7 +16,7 @@ const RecognitionBoard = ({ monthlyData = [], selectedPeriod }: RecognitionBoard
   ]);
 
   // 2. የዲፓርትመንት ዝርዝርና ውጤት ስሌት
-  const processedDepartments = useMemo(() => {
+  const monthlyData = useMemo(() => {
     const departmentList = [
       { id: "mch", name: "MCH (Maternal & Child)", indicators: ["Maternal death audit", "Birth notification", "ANC4-8 dropout"] },
       { id: "nicu", name: "NICU", indicators: ["Neonate resuscitation", "KMC initiation", "Neonatal death review"] },
@@ -33,7 +33,7 @@ const RecognitionBoard = ({ monthlyData = [], selectedPeriod }: RecognitionBoard
     }).sort((a, b) => b.score - a.score);
   }, [monthlyData, selectedPeriod]);
 
-  const topThree = processedDepartments.slice(0, 3);
+  const topThree = monthlyData.slice(0, 3);
 
   return (
     <div className="p-6 space-y-8 bg-white rounded-3xl border shadow-sm">
@@ -101,7 +101,7 @@ const RecognitionBoard = ({ monthlyData = [], selectedPeriod }: RecognitionBoard
 
       {/* Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {processedDepartments.map((dept, i) => (
+        {monthlyData.map((dept, i) => (
           <div key={i} className="bg-white p-6 rounded-[24px] border border-slate-100 shadow-sm">
             <div className="flex justify-between items-start mb-4">
               <h4 className="font-black text-slate-800 text-xs uppercase">{dept.name}</h4>
