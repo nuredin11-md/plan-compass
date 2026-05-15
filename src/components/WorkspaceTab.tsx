@@ -1,3 +1,5 @@
+import RecognitionBoard from "./RecognitionBoard";
+import { Award } from "lucide-react";
 import { useMemo, useState, useCallback } from "react";
 import {
   indicators, getActualYTD, getStatus, getProgramAreas, MONTHS, type MonthlyEntry,
@@ -47,12 +49,12 @@ export default function WorkspaceTab({ monthlyData }: Props) {
   const [groupBy, setGroupBy] = useState<"department" | "indicator" | "status">("department");
 
   const areas = getProgramAreas();
-  // ከዚህ በታች ያሉትን በ WorkspaceTab ውስጥ ጨምር
+  
 const [compareMode, setCompareMode] = useState(false);
 const [compareYear, setCompareYear] = useState<string | undefined>();
 const currentYear = "2026"; 
 
-// ለጊዜው ባዶ ዳታ እንዲይዙ ማድረግ (Crash እንዳያደርግ)
+
 const compareData = []; 
 const areaYoY = []; 
 const comparisonData = [];
@@ -387,6 +389,7 @@ const comparisonData = [];
           <TabsTrigger value="pie" className="gap-1.5"><PieChartIcon className="h-4 w-4" /> Pie Chart</TabsTrigger>
           <TabsTrigger value="trend" className="gap-1.5"><TrendingUp className="h-4 w-4" /> Trend</TabsTrigger>
           <TabsTrigger value="radar" className="gap-1.5"><RadarIcon className="h-4 w-4" /> Radar</TabsTrigger>
+          <TabsTrigger value="recognition" className="gap-1.5"><Award className="h-4 w-4" /> Recognition</TabsTrigger>
           {compareMode && compareData && (
             <TabsTrigger value="comparison" className="gap-1.5"><BarChart3 className="h-4 w-4" /> YoY</TabsTrigger>
           )}
@@ -720,6 +723,7 @@ const comparisonData = [];
 
         {/* ─── RADAR VIEW ─── */}
         <TabsContent value="radar" className="mt-4">
+          <TabsTrigger value="recognition" className="gap-1.5"><Award className="h-4 w-4" /> Recognition</TabsTrigger>
           <Card>
             <CardHeader><CardTitle className="text-base">Multi-Department Performance Radar</CardTitle></CardHeader>
             <CardContent>
@@ -800,6 +804,7 @@ const comparisonData = [];
             </div>
           </TabsContent>
         )}
+        <TabsContent value="recognition" className="mt-4"><RecognitionBoard monthlyData={monthlyData} /></TabsContent>
       </Tabs>
 
       {/* Top & Bottom Performers */}
