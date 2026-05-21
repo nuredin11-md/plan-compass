@@ -61,3 +61,5 @@ Thumbs.db
 dist/
 build/.gemini/
 .codeoss/
+.cache/
+*.log
