@@ -1,0 +1,5 @@
+  const filteredData = useMemo(() => {
+    // የመረጥከው ወር ዳታ ከሌለ ሁሉንም ዳታ እንዲያሳይ (ለሙከራ ያህል)
+    const data = monthlyData.filter(d => d.month === selectedMonth);
+    return data.length > 0 ? data : monthlyData; 
+  }, [monthlyData, selectedMonth]);
