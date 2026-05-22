@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -89,6 +89,108 @@ export type Database = {
           resource?: string
           status?: string
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      departments: {
+        Row: {
+          created_at: string | null
+          head_name: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string | null
+          head_name?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string | null
+          head_name?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      hospital_plan_and_performance: {
+        Row: {
+          category: string
+          created_at: string | null
+          fiscal_year: string
+          id: number
+          indicator_name: string
+          metric_type: string
+          metric_value: number | null
+          percentage_value: number | null
+          remark: string | null
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          category: string
+          created_at?: string | null
+          fiscal_year: string
+          id?: number
+          indicator_name: string
+          metric_type: string
+          metric_value?: number | null
+          percentage_value?: number | null
+          remark?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          fiscal_year?: string
+          id?: number
+          indicator_name?: string
+          metric_type?: string
+          metric_value?: number | null
+          percentage_value?: number | null
+          remark?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      indicators: {
+        Row: {
+          actual_value: number | null
+          amharic_name: string | null
+          category: string | null
+          created_at: string | null
+          direction: string | null
+          id: string
+          name: string
+          status: string | null
+          target_value: number | null
+          unit: string | null
+        }
+        Insert: {
+          actual_value?: number | null
+          amharic_name?: string | null
+          category?: string | null
+          created_at?: string | null
+          direction?: string | null
+          id?: string
+          name: string
+          status?: string | null
+          target_value?: number | null
+          unit?: string | null
+        }
+        Update: {
+          actual_value?: number | null
+          amharic_name?: string | null
+          category?: string | null
+          created_at?: string | null
+          direction?: string | null
+          id?: string
+          name?: string
+          status?: string | null
+          target_value?: number | null
+          unit?: string | null
         }
         Relationships: []
       }

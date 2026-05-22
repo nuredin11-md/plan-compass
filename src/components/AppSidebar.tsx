@@ -4,7 +4,7 @@ import {
   ClipboardList,
   CalendarDays,
   Upload,
-  
+  TrendingUp,
   GitCompareArrows,
   MessageSquareText,
   
@@ -31,6 +31,7 @@ const navItems = [
   { id: "workspace", label: "Analytics Workspace", icon: LayoutDashboard, color: "text-teal-500" },
   { id: "masterplan", label: "Master Plan", icon: ClipboardList, color: "text-purple-500" },
   { id: "monthly", label: "Monthly Entry", icon: CalendarDays, color: "text-amber-500" },
+  { id: "performance", label: "Hospital Performance", icon: TrendingUp, color: "text-emerald-500" },
   { id: "import", label: "DHIS2 Import", icon: Upload, color: "text-green-500" },
   { id: "distribution", label: "Distribution", icon: Share2, color: "text-pink-500" },
   { id: "backup", label: "Backup & Recovery", icon: HardDrive, color: "text-red-500" },

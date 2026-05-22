@@ -18,6 +18,7 @@ import YearComparisonTab from "@/components/YearComparisonTab";
 import ExportButton from "@/components/ExportButton";
 import AboutUsTab from "@/components/AboutUsTab";
 import WorkspaceTab from "@/components/WorkspaceTab";
+import HospitalPerformanceTab from "@/components/HospitalPerformanceTab";
 import { BackupManager } from "@/lib/backupUtils";
 import { AuditLogger } from "@/lib/securityUtils";
 import { mergeMonthlyData } from "@/lib/databaseSync";
@@ -26,13 +27,14 @@ import { toast } from "sonner";
 
 const Index = () => {
   const { user, profile, role, signOut } = useAuth();
-  const { fetchMonthlyData } = useDatabase();
+  const { fetchMonthlyData, fetchHospitalPerformanceData } = useDatabase();
   const { isOnline, isSyncing, syncError, pendingSyncCount, manualSync, isDatabaseAvailable } = useOfflineSync();
   const currentCalendarYear = new Date().getFullYear();
 
   const [selectedYear, setSelectedYear] = useState(currentCalendarYear);
   const [compareYear, setCompareYear] = useState<number | null>(null);
   const [yearlyData, setYearlyData] = useState<Record<number, MonthlyEntry[]>>({});
+  const [hospitalPerformanceData, setHospitalPerformanceData] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isLoadingData, setIsLoadingData] = useState(true);
 
@@ -94,12 +96,15 @@ const Index = () => {
       try {
         await loadYearData(currentCalendarYear);
         await loadYearData(currentCalendarYear - 1);
+          // Load hospital performance data
+          const performanceData = await fetchHospitalPerformanceData();
+          setHospitalPerformanceData(performanceData);
       } finally {
         setIsLoadingData(false);
       }
     };
     loadInitialData();
-  }, [currentCalendarYear, loadYearData]);
+    }, [currentCalendarYear, loadYearData, fetchHospitalPerformanceData]);
 
   const handleYearChange = async (newYear: number) => {
     setSelectedYear(newYear);
@@ -207,6 +212,8 @@ const Index = () => {
             />
           </div>
         );
+      case "performance":
+        return <HospitalPerformanceTab />;
       case "feedback":
         return <FeedbackTab monthlyData={monthlyData} />;
       case "about":

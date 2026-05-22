@@ -37,6 +37,20 @@ export interface MonthlyData {
   updated_at: string;
 }
 
+export interface HospitalPlanPerformance {
+  id: number;
+  category: string;
+  indicator_name: string;
+  fiscal_year: string;
+  metric_type: string;
+  metric_value: number | null;
+  percentage_value: number | null;
+  status: string;
+  remark: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
 export function useDatabase() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -253,6 +267,47 @@ export function useDatabase() {
     []
   );
 
+  // Fetch hospital plan and performance data
+  const fetchHospitalPerformanceData = useCallback(
+    async (filters?: {
+      category?: string;
+      fiscal_year?: string;
+      metric_type?: string;
+    }): Promise<HospitalPlanPerformance[]> => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        let query = supabase
+          .from("hospital_plan_and_performance")
+          .select("*");
+
+        if (filters?.category) {
+          query = query.eq("category", filters.category);
+        }
+        if (filters?.fiscal_year) {
+          query = query.eq("fiscal_year", filters.fiscal_year);
+        }
+        if (filters?.metric_type) {
+          query = query.eq("metric_type", filters.metric_type);
+        }
+
+        const { data, error: queryError } = await query.order("fiscal_year", { ascending: false });
+
+        if (queryError) throw queryError;
+        return data || [];
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to fetch hospital performance data";
+        setError(message);
+        if (import.meta.env.DEV) console.error("Error fetching hospital performance data:", err);
+        return [];
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
   return {
     loading,
     error,
@@ -261,5 +316,6 @@ export function useDatabase() {
     upsertMonthlyData,
     upsertAnnualPlan,
     deleteAnnualPlan,
+    fetchHospitalPerformanceData,
   };
 }

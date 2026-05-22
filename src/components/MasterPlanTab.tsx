@@ -16,35 +16,35 @@ import {
   Search, Save, X, Plus, Trash2, Maximize2, Minimize2, Pencil,
   TrendingUp, TrendingDown, Minus, ChevronUp, ChevronDown,
   AlertTriangle, CheckCircle2, XCircle, Filter, BarChart3,
-  Target, Activity, RefreshCw, Info, Download, Eye,
+  Target, Activity, RefreshCw, Info, Download,
 } from "lucide-react";
 import { useDatabase } from "@/hooks/useDatabase";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { exportToCSV, exportToExcel } from "@/lib/exportUtils";
- 
+import { exportToCSV } from "@/lib/exportUtils";
+
 // ── Types ─────────────────────────────────────────────────────────────────────
- 
+
 interface Props {
   monthlyData: MonthlyEntry[];
   selectedYear: number;
   previousYearData: MonthlyEntry[];
 }
- 
+
 type SortField = "code" | "indicator" | "programArea" | "target" | "actual" | "percent";
 type SortDir = "asc" | "desc";
- 
+
 // ── Design tokens ──────────────────────────────────────────────────────────────
- 
+
 const STATUS_CONFIG = {
   green:  { label: "On Track",  Icon: CheckCircle2, bg: "#d1fae5", text: "#064e3b", bar: "#059669", badge: "bg-emerald-100 text-emerald-800 border-emerald-200" },
   yellow: { label: "At Risk",   Icon: AlertTriangle, bg: "#fef3c7", text: "#78350f", bar: "#d97706", badge: "bg-amber-100 text-amber-800 border-amber-200" },
   red:    { label: "Off Track", Icon: XCircle,       bg: "#fee2e2", text: "#7f1d1d", bar: "#dc2626", badge: "bg-red-100 text-red-800 border-red-200" },
 } as const;
- 
+
 // ── Primitives ────────────────────────────────────────────────────────────────
- 
+
 const StatusPill = ({ percent }: { percent: number }) => {
   const s = getStatus(percent);
   const cfg = STATUS_CONFIG[s];
@@ -60,7 +60,7 @@ const StatusPill = ({ percent }: { percent: number }) => {
     </span>
   );
 };
- 
+
 const ProgressBar = ({ percent }: { percent: number }) => {
   const s = getStatus(percent);
   return (
@@ -80,7 +80,7 @@ const ProgressBar = ({ percent }: { percent: number }) => {
     </div>
   );
 };
- 
+
 const YoYChip = ({ current, previous }: { current: number; previous: number }) => {
   const diff = current - previous;
   if (Math.abs(diff) < 1)
@@ -89,7 +89,7 @@ const YoYChip = ({ current, previous }: { current: number; previous: number }) =
     return <span className="text-[11px] font-semibold text-emerald-600 flex items-center gap-0.5"><TrendingUp className="h-3 w-3" />+{diff}%</span>;
   return <span className="text-[11px] font-semibold text-red-500 flex items-center gap-0.5"><TrendingDown className="h-3 w-3" />{diff}%</span>;
 };
- 
+
 const SortTh = ({
   field, label, sortField, sortDir, onSort, className = "",
 }: {
@@ -113,7 +113,7 @@ const SortTh = ({
     </span>
   </th>
 );
- 
+
 const KpiCard = ({
   icon, label, value, sub, accent,
 }: {
@@ -134,9 +134,9 @@ const KpiCard = ({
     </CardContent>
   </Card>
 );
- 
+
 // ── Edit Indicator Modal ───────────────────────────────────────────────────────
- 
+
 function EditIndicatorModal({
   indicator, isCustomIndicator, uniqueProgramAreas, uniqueSubPrograms, onSave, onClose,
 }: {
@@ -154,18 +154,18 @@ function EditIndicatorModal({
   const [programArea, setProgramArea] = useState(indicator.programArea);
   const [subProgram, setSubProgram] = useState(indicator.subProgram);
   const [saving, setSaving] = useState(false);
- 
+
   const handleAnnualTargetChange = (value: string) => {
     setTarget(value);
     const v = Number(value);
-    if (!isNaN(v) && v > 0) {
+    if (!isNaN(v) && v >= 0) {
       const dist = distributeAnnualTarget(v);
       setMonthlyTarget(String(dist.monthlyTarget));
       setQuarterlyTarget(String(dist.quarterlyTarget));
       setSemiannualTarget(String(dist.semiannualTarget));
     }
   };
- 
+
   const handleSave = async () => {
     if (!name.trim()) { toast.error("Indicator name is required"); return; }
     const t = Number(target), b = Number(baseline);
@@ -181,7 +181,7 @@ function EditIndicatorModal({
       onClose();
     } finally { setSaving(false); }
   };
- 
+
   return (
     <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
       <DialogHeader>
@@ -193,9 +193,8 @@ function EditIndicatorModal({
           </code>
         </DialogTitle>
       </DialogHeader>
- 
+
       <div className="space-y-4 pt-1">
-        {/* Info banner */}
         <div className="flex items-start gap-2.5 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-sm text-blue-800 dark:text-blue-300">
           <Info className="h-4 w-4 mt-0.5 shrink-0 text-blue-500" />
           <span>
@@ -203,17 +202,17 @@ function EditIndicatorModal({
             <strong>Dashboard</strong>, <strong>Analytics</strong>, and <strong>Dept. Feedback</strong>.
           </span>
         </div>
- 
+
         <div className="space-y-1.5">
           <Label>Indicator Name <span className="text-red-500">*</span></Label>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Clear, measurable description…" autoFocus />
         </div>
- 
+
         <div className="space-y-1.5">
           <Label>Unit of Measure</Label>
           <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="#, %, ratio…" />
         </div>
- 
+
         {isCustomIndicator ? (
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -247,7 +246,7 @@ function EditIndicatorModal({
             </div>
           </div>
         )}
- 
+
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label>Baseline</Label>
@@ -258,8 +257,7 @@ function EditIndicatorModal({
             <Input type="number" min="0" value={target} onChange={(e) => handleAnnualTargetChange(e.target.value)} />
           </div>
         </div>
- 
-        {/* Time-based targets */}
+
         <div className="space-y-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
           <Label className="text-xs font-semibold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
             <Target className="h-3.5 w-3.5" />
@@ -280,7 +278,7 @@ function EditIndicatorModal({
             ))}
           </div>
         </div>
- 
+
         <div className="flex gap-2 pt-1">
           <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
           <Button className="flex-1 gap-2" onClick={handleSave} disabled={saving}>
@@ -293,9 +291,9 @@ function EditIndicatorModal({
     </DialogContent>
   );
 }
- 
+
 // ── Add Indicator Modal ───────────────────────────────────────────────────────
- 
+
 function AddIndicatorModal({
   uniqueProgramAreas, uniqueSubPrograms, onAdd, onClose,
 }: {
@@ -310,7 +308,7 @@ function AddIndicatorModal({
   const [programArea, setProgramArea] = useState("");
   const [subProgram, setSubProgram] = useState("");
   const [saving, setSaving] = useState(false);
- 
+
   const handleAdd = async () => {
     if (!code.trim()) { toast.error("Code is required"); return; }
     if (!name.trim()) { toast.error("Name is required"); return; }
@@ -328,7 +326,7 @@ function AddIndicatorModal({
     setSaving(false);
     if (ok) onClose();
   };
- 
+
   return (
     <DialogContent className="sm:max-w-[520px]">
       <DialogHeader>
@@ -337,7 +335,7 @@ function AddIndicatorModal({
           Add New Indicator
         </DialogTitle>
       </DialogHeader>
- 
+
       <div className="space-y-4 pt-1">
         <div className="flex items-start gap-2.5 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-sm text-blue-800 dark:text-blue-300">
           <Info className="h-4 w-4 mt-0.5 shrink-0 text-blue-500" />
@@ -345,7 +343,7 @@ function AddIndicatorModal({
             Will appear immediately in <strong>all tabs</strong> including Monthly Entry, Dashboard, Analytics, and Dept. Feedback.
           </span>
         </div>
- 
+
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label>Code <span className="text-red-500">*</span></Label>
@@ -362,12 +360,12 @@ function AddIndicatorModal({
             <Input placeholder="#, %, ratio…" value={unit} onChange={(e) => setUnit(e.target.value)} />
           </div>
         </div>
- 
+
         <div className="space-y-1.5">
           <Label>Indicator Name <span className="text-red-500">*</span></Label>
           <Input placeholder="Clear, measurable description…" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
- 
+
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label>Program Area <span className="text-red-500">*</span></Label>
@@ -388,7 +386,7 @@ function AddIndicatorModal({
             </Select>
           </div>
         </div>
- 
+
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label>Baseline</Label>
@@ -399,7 +397,7 @@ function AddIndicatorModal({
             <Input type="number" min="0" value={target} onChange={(e) => setTarget(e.target.value)} />
           </div>
         </div>
- 
+
         <div className="flex gap-2 pt-1">
           <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
           <Button className="flex-1 gap-2" onClick={handleAdd} disabled={saving}>
@@ -412,14 +410,14 @@ function AddIndicatorModal({
     </DialogContent>
   );
 }
- 
+
 // ── Main Component ────────────────────────────────────────────────────────────
- 
+
 export default function MasterPlanTab({ monthlyData, selectedYear, previousYearData }: Props) {
   const { user } = useAuth();
   const { upsertAnnualPlan, deleteAnnualPlan } = useDatabase();
   const { indicators, addIndicator, updateIndicator, removeIndicator, isCustom } = useIndicators();
- 
+
   const [search, setSearch] = useState("");
   const [filterArea, setFilterArea] = useState("all");
   const [filterStatus, setFilterStatus] = useState<"all" | "green" | "yellow" | "red">("all");
@@ -429,7 +427,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
   const [editingIndicator, setEditingIndicator] = useState<Indicator | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [deletingCode, setDeletingCode] = useState<string | null>(null);
- 
+
   const uniqueProgramAreas = useMemo(
     () => Array.from(new Set(indicators.map((i) => i.programArea))).sort(),
     [indicators]
@@ -438,7 +436,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
     () => Array.from(new Set(indicators.map((i) => i.subProgram))).sort(),
     [indicators]
   );
- 
+
   const handleSort = useCallback(
     (field: SortField) => {
       if (field === sortField) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -446,7 +444,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
     },
     [sortField]
   );
- 
+
   const rows = useMemo(() => {
     let list = indicators.map((ind) => {
       const actual = getActualYTD(ind.code, monthlyData);
@@ -455,7 +453,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
       const prevPercent = ind.target > 0 ? Math.round((prevActual / ind.target) * 100) : 0;
       return { ...ind, actual, percent, prevPercent, status: getStatus(percent) };
     });
- 
+
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
@@ -468,7 +466,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
     }
     if (filterArea !== "all") list = list.filter((r) => r.programArea === filterArea);
     if (filterStatus !== "all") list = list.filter((r) => r.status === filterStatus);
- 
+
     list.sort((a, b) => {
       const aVal = (
         {
@@ -486,10 +484,10 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
         return sortDir === "asc" ? aVal.localeCompare(bVal as string) : (bVal as string).localeCompare(aVal);
       return sortDir === "asc" ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
     });
- 
+
     return list;
   }, [indicators, monthlyData, previousYearData, search, filterArea, filterStatus, sortField, sortDir]);
- 
+
   const stats = useMemo(() => {
     const all = indicators.map((ind) => {
       const actual = getActualYTD(ind.code, monthlyData);
@@ -503,7 +501,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
       offTrack: all.filter((s) => s === "red").length,
     };
   }, [indicators, monthlyData]);
- 
+
   const handleSaveEdit = useCallback(
     async (patch: Partial<Indicator>) => {
       if (!editingIndicator) return;
@@ -521,7 +519,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
     },
     [editingIndicator, updateIndicator, upsertAnnualPlan, selectedYear, user]
   );
- 
+
   const handleAdd = useCallback(
     async (ind: Indicator): Promise<boolean> => {
       const ok = addIndicator(ind as any);
@@ -539,7 +537,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
     },
     [addIndicator, upsertAnnualPlan, selectedYear, user]
   );
- 
+
   const handleDelete = useCallback(
     async (code: string) => {
       setDeletingCode(code);
@@ -553,7 +551,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
     },
     [deleteAnnualPlan, removeIndicator, selectedYear]
   );
- 
+
   const handleExportCSV = useCallback(() => {
     const data = rows.map((r) => ({
       "Code": r.code,
@@ -570,10 +568,10 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
     exportToCSV(data, `MasterPlan_${selectedYear}_${new Date().toISOString().split("T")[0]}`);
     toast.success("Exported as CSV");
   }, [rows, selectedYear]);
- 
+
   const clearFilters = () => { setSearch(""); setFilterArea("all"); setFilterStatus("all"); };
   const hasFilters = search || filterArea !== "all" || filterStatus !== "all";
- 
+
   return (
     <div
       className={cn(
@@ -610,7 +608,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
           accent="#dc2626"
         />
       </div>
- 
+
       {/* ── Toolbar ── */}
       <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center justify-between">
         <div className="flex flex-wrap gap-2 flex-1 min-w-0">
@@ -632,7 +630,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
               </button>
             )}
           </div>
- 
+
           {/* Area filter */}
           <Select value={filterArea} onValueChange={setFilterArea}>
             <SelectTrigger className="h-8 w-[180px] text-xs">
@@ -644,7 +642,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
               {uniqueProgramAreas.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
             </SelectContent>
           </Select>
- 
+
           {/* Status filter buttons */}
           {(["all", "green", "yellow", "red"] as const).map((s) => (
             <button
@@ -672,14 +670,14 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
                 : "✕ Off Track"}
             </button>
           ))}
- 
+
           {hasFilters && (
             <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 gap-1.5 text-xs text-muted-foreground">
               <RefreshCw className="h-3.5 w-3.5" />Clear
             </Button>
           )}
         </div>
- 
+
         <div className="flex gap-1.5 shrink-0">
           <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={handleExportCSV}>
             <Download className="h-3.5 w-3.5" />Export
@@ -702,7 +700,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
           </Dialog>
         </div>
       </div>
- 
+
       {/* Results count */}
       {hasFilters && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground -mt-1">
@@ -711,7 +709,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
           <strong className="text-foreground">{stats.total}</strong> indicators
         </div>
       )}
- 
+
       {/* Edit Dialog */}
       <Dialog open={!!editingIndicator} onOpenChange={(o) => { if (!o) setEditingIndicator(null); }}>
         {editingIndicator && (
@@ -725,7 +723,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
           />
         )}
       </Dialog>
- 
+
       {/* ── Table ── */}
       <div
         className={cn(
@@ -767,153 +765,128 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
                 <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center w-[60px]">
                   Unit
                 </th>
-                <SortTh field="target" label="Target" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right w-[90px]" />
-                <SortTh field="actual" label="Actual" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right w-[90px]" />
-                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-left min-w-[150px]">
-                  Progress
-                </th>
-                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center w-[80px]">
+                <SortTh
+                  field="target"
+                  label="Target"
+                  sortField={sortField}
+                  sortDir={sortDir}
+                  onSort={handleSort}
+                  className="text-right w-[90px]"
+                />
+                <SortTh
+                  field="actual"
+                  label="Actual YTD"
+                  sortField={sortField}
+                  sortDir={sortDir}
+                  onSort={handleSort}
+                  className="text-right w-[100px]"
+                />
+                <SortTh
+                  field="percent"
+                  label="Progress"
+                  sortField={sortField}
+                  sortDir={sortDir}
+                  onSort={handleSort}
+                  className="text-left w-[160px]"
+                />
+                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center w-[70px]">
                   YoY
                 </th>
-                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center w-[110px]">
-                  Status
-                </th>
-                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center w-[80px]">
+                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center w-[90px]">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border/40">
+            <tbody className="divide-y divide-border">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-16 text-center text-muted-foreground">
-                    <div className="flex flex-col items-center gap-3">
-                      <Search className="h-8 w-8 opacity-25" />
-                      <p className="font-medium text-sm">No indicators match your filters</p>
-                      <button onClick={clearFilters} className="text-primary text-xs hover:underline">
-                        Clear filters
+                  <td colSpan={10} className="p-8 text-center text-muted-foreground">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <AlertTriangle className="h-5 w-5 text-muted-foreground/70" />
+                      <p className="font-medium text-sm">No indicators match your criteria.</p>
+                      <button onClick={clearFilters} className="text-xs text-primary underline underline-offset-4">
+                        Reset Filters
                       </button>
                     </div>
                   </td>
                 </tr>
               ) : (
-                rows.map((ind, i) => {
-                  const custom = isCustom(ind.code);
-                  const isDeleting = deletingCode === ind.code;
-                  return (
-                    <tr
-                      key={ind.code}
-                      className={cn(
-                        "transition-colors group",
-                        i % 2 === 0 ? "bg-card hover:bg-muted/20" : "bg-muted/5 hover:bg-muted/25"
-                      )}
-                    >
-                      {/* Code */}
-                      <td className="p-3 border-r sticky left-0 bg-inherit z-10 shadow-[2px_0_6px_-3px_rgba(0,0,0,0.1)]">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-xs font-bold text-primary">{ind.code}</span>
-                          {custom && (
-                            <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 border border-blue-200">
-                              NEW
-                            </span>
-                          )}
+                rows.map((row) => (
+                  <tr key={row.code} className="hover:bg-muted/40 transition-colors group">
+                    {/* Fixed Code Column */}
+                    <td className="p-3 font-mono text-xs font-bold sticky left-0 bg-background group-hover:bg-muted/40 transition-colors border-r tabular-nums">
+                      {row.code}
+                    </td>
+                    {/* Indicator Name */}
+                    <td className="p-3 font-medium text-foreground max-w-[400px] break-words">
+                      {row.indicator}
+                    </td>
+                    {/* Program Area */}
+                    <td className="p-3 text-muted-foreground whitespace-nowrap text-xs">
+                      <Badge variant="outline" className="font-normal border-muted/60 bg-muted/20">
+                        {row.programArea}
+                      </Badge>
+                    </td>
+                    {/* Sub Program */}
+                    <td className="p-3 text-muted-foreground text-xs max-w-[150px] truncate" title={row.subProgram}>
+                      {row.subProgram}
+                    </td>
+                    {/* Unit */}
+                    <td className="p-3 text-center font-mono text-xs text-muted-foreground">
+                      {row.unit}
+                    </td>
+                    {/* Annual Target */}
+                    <td className="p-3 text-right font-mono text-xs font-semibold tabular-nums">
+                      {row.target.toLocaleString()}
+                    </td>
+                    {/* YTD Actual */}
+                    <td className="p-3 text-right font-mono text-xs font-semibold tabular-nums text-foreground">
+                      {row.actual.toLocaleString()}
+                    </td>
+                    {/* Progress Bar & Status Pill */}
+                    <td className="p-3 align-middle">
+                      <div className="flex flex-col gap-1.5 justify-center">
+                        <ProgressBar percent={row.percent} />
+                        <div className="flex">
+                          <StatusPill percent={row.percent} />
                         </div>
-                      </td>
- 
-                      {/* Indicator */}
-                      <td className="p-3">
-                        <span className="text-sm font-medium line-clamp-2 leading-snug">{ind.indicator}</span>
-                      </td>
- 
-                      {/* Program Area */}
-                      <td className="p-3 text-xs text-muted-foreground">{ind.programArea}</td>
- 
-                      {/* Sub-program */}
-                      <td className="p-3 text-xs text-muted-foreground">{ind.subProgram}</td>
- 
-                      {/* Unit */}
-                      <td className="p-3 text-center">
-                        <span className="text-xs font-mono text-muted-foreground">{ind.unit}</span>
-                      </td>
- 
-                      {/* Target */}
-                      <td className="p-3 text-right">
-                        <span className="font-mono text-sm">{ind.target.toLocaleString()}</span>
-                      </td>
- 
-                      {/* Actual */}
-                      <td className="p-3 text-right">
-                        <span className="font-mono text-sm font-semibold text-primary">
-                          {ind.actual.toLocaleString()}
-                        </span>
-                      </td>
- 
-                      {/* Progress */}
-                      <td className="p-3">
-                        <ProgressBar percent={ind.percent} />
-                      </td>
- 
-                      {/* YoY */}
-                      <td className="p-3 text-center">
-                        <YoYChip current={ind.percent} previous={ind.prevPercent} />
-                      </td>
- 
-                      {/* Status */}
-                      <td className="p-3 text-center">
-                        <StatusPill percent={ind.percent} />
-                      </td>
- 
-                      {/* Actions */}
-                      <td className="p-3">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => setEditingIndicator(ind)}
-                            title="Edit"
-                            className="h-7 w-7 flex items-center justify-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 transition-all"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          {custom && (
-                            <button
-                              onClick={() => handleDelete(ind.code)}
-                              disabled={isDeleting}
-                              title="Delete"
-                              className="h-7 w-7 flex items-center justify-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-500 transition-all disabled:opacity-40"
-                            >
-                              {isDeleting
-                                ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                                : <Trash2 className="h-3.5 w-3.5" />}
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
+                      </div>
+                    </td>
+                    {/* Year over Year Comparison */}
+                    <td className="p-3 text-center align-middle">
+                      <YoYChip current={row.percent} previous={row.prevPercent} />
+                    </td>
+                    {/* Action Row Buttons */}
+                    <td className="p-3 text-center align-middle">
+                      <div className="flex items-center justify-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted"
+                          onClick={() => setEditingIndicator(row)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          disabled={deletingCode === row.code}
+                          onClick={() => {
+                            if (confirm(`Are you sure you want to delete indicator ${row.code}?`)) {
+                              handleDelete(row.code);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
-        </div>
- 
-        {/* Footer */}
-        <div className="border-t bg-muted/20 px-4 py-2.5 flex items-center justify-between text-xs text-muted-foreground">
-          <span>
-            {rows.length} indicator{rows.length !== 1 ? "s" : ""} · {selectedYear} annual plan
-          </span>
-          <div className="flex items-center gap-5">
-            {(
-              [
-                { label: "On Track", count: stats.onTrack, color: "#059669" },
-                { label: "At Risk",  count: stats.atRisk,  color: "#d97706" },
-                { label: "Off Track", count: stats.offTrack, color: "#dc2626" },
-              ] as const
-            ).map(({ label, count, color }) => (
-              <span key={label} className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full inline-block" style={{ background: color }} />
-                {label}: <strong className="text-foreground">{count}</strong>
-              </span>
-            ))}
-          </div>
         </div>
       </div>
     </div>
