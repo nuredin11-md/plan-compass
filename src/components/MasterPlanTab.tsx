@@ -1,7 +1,8 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
-  getStatus, getActualYTD,
-  type MonthlyEntry, type Indicator,
+  getStatus,
+  type MonthlyEntry,
+  type Indicator,
   distributeAnnualTarget,
 } from "@/data/hospitalIndicators";
 import { useIndicators } from "@/context/IndicatorsContext";
@@ -10,8 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Search, Save, X, Plus, Trash2, Maximize2, Minimize2, Pencil,
   TrendingUp, TrendingDown, Minus, ChevronUp, ChevronDown,
@@ -43,6 +43,18 @@ const STATUS_CONFIG = {
   red:    { label: "Off Track", Icon: XCircle,       bg: "#fee2e2", text: "#7f1d1d", bar: "#dc2626", badge: "bg-red-100 text-red-800 border-red-200" },
 } as const;
 
+// ── Helper Function for Ethiopian 9-Month Report ─────────────────────────────
+
+/**
+ * በ2017/18 በጀት ዓመት የሆስፒታሉን የ9 ወር አፈጻጸም ወይም መደበኛውን YTD የሚሰላበት መንገድ
+ */
+const calculatePerformanceActual = (indicatorCode: string, data: MonthlyEntry[]): number => {
+  // እዚህ ጋር d.indicatorCode የሚለውን በዳታቤዝህ ስም መሰረት አስተካክለዋለሁ (ለምሳሌ d.indicator_code ከሆነ)
+  const indicatorRows = data.filter(d => (d as any).indicatorCode === indicatorCode);
+  if (indicatorRows.length === 0) return 0;
+  
+  return indicatorRows.reduce((sum, row) => sum + (row.actual || 0), 0);
+};
 // ── Primitives ────────────────────────────────────────────────────────────────
 
 const StatusPill = ({ percent }: { percent: number }) => {
@@ -166,7 +178,7 @@ function EditIndicatorModal({
     }
   };
 
-  const handleSave = async () => {
+ const handleSave = async () => {
     if (!name.trim()) { toast.error("Indicator name is required"); return; }
     const t = Number(target), b = Number(baseline);
     if (isNaN(t) || t < 0) { toast.error("Target must be ≥ 0"); return; }
@@ -179,7 +191,11 @@ function EditIndicatorModal({
         semiannualTarget: Number(semiannualTarget), programArea, subProgram,
       });
       onClose();
-    } finally { setSaving(false); }
+    } catch (error) {
+      toast.error("Failed to save changes");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -258,33 +274,10 @@ function EditIndicatorModal({
           </div>
         </div>
 
-        <div className="space-y-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
-          <Label className="text-xs font-semibold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
-            <Target className="h-3.5 w-3.5" />
-            Time-Based Targets
-            <span className="font-normal opacity-75">(auto-calculated, editable for seasonal adjustments)</span>
-          </Label>
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { label: "Monthly", value: monthlyTarget, onChange: setMonthlyTarget, hint: "Annual ÷ 12" },
-              { label: "Quarterly", value: quarterlyTarget, onChange: setQuarterlyTarget, hint: "Annual ÷ 4" },
-              { label: "Semi-annual", value: semiannualTarget, onChange: setSemiannualTarget, hint: "Annual ÷ 2" },
-            ].map(({ label, value, onChange, hint }) => (
-              <div key={label} className="space-y-1">
-                <Label className="text-xs text-muted-foreground">{label}</Label>
-                <Input type="number" min="0" step="0.01" value={value} onChange={(e) => onChange(e.target.value)} className="text-xs h-8" />
-                <p className="text-[10px] text-muted-foreground">{hint}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
         <div className="flex gap-2 pt-1">
           <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
           <Button className="flex-1 gap-2" onClick={handleSave} disabled={saving}>
-            {saving
-              ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" />Saving…</>
-              : <><Save className="h-3.5 w-3.5" />Save Changes</>}
+            {saving ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" />Saving…</> : <><Save className="h-3.5 w-3.5" />Save Changes</>}
           </Button>
         </div>
       </div>
@@ -337,18 +330,11 @@ function AddIndicatorModal({
       </DialogHeader>
 
       <div className="space-y-4 pt-1">
-        <div className="flex items-start gap-2.5 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-sm text-blue-800 dark:text-blue-300">
-          <Info className="h-4 w-4 mt-0.5 shrink-0 text-blue-500" />
-          <span>
-            Will appear immediately in <strong>all tabs</strong> including Monthly Entry, Dashboard, Analytics, and Dept. Feedback.
-          </span>
-        </div>
-
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label>Code <span className="text-red-500">*</span></Label>
             <Input
-              placeholder="MCH_FP_05"
+              placeholder="CD_HIV_06"
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase())}
               className="font-mono"
@@ -401,9 +387,7 @@ function AddIndicatorModal({
         <div className="flex gap-2 pt-1">
           <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
           <Button className="flex-1 gap-2" onClick={handleAdd} disabled={saving}>
-            {saving
-              ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" />Saving…</>
-              : <><Save className="h-3.5 w-3.5" />Add Indicator</>}
+            {saving ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" />Saving…</> : <><Save className="h-3.5 w-3.5" />Add Indicator</>}
           </Button>
         </div>
       </div>
@@ -447,9 +431,10 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
 
   const rows = useMemo(() => {
     let list = indicators.map((ind) => {
-      const actual = getActualYTD(ind.code, monthlyData);
+      // አዲሱን የ9 ወራት አፈጻጸም እውነተኛ መረጃ እዚህ ጋር ያገናኛል
+      const actual = calculatePerformanceActual(ind.code, monthlyData);
       const percent = ind.target > 0 ? Math.round((actual / ind.target) * 100) : 0;
-      const prevActual = getActualYTD(ind.code, previousYearData);
+      const prevActual = calculatePerformanceActual(ind.code, previousYearData);
       const prevPercent = ind.target > 0 ? Math.round((prevActual / ind.target) * 100) : 0;
       return { ...ind, actual, percent, prevPercent, status: getStatus(percent) };
     });
@@ -468,18 +453,8 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
     if (filterStatus !== "all") list = list.filter((r) => r.status === filterStatus);
 
     list.sort((a, b) => {
-      const aVal = (
-        {
-          code: a.code, indicator: a.indicator, programArea: a.programArea,
-          target: a.target, actual: a.actual, percent: a.percent,
-        } as Record<SortField, string | number>
-      )[sortField];
-      const bVal = (
-        {
-          code: b.code, indicator: b.indicator, programArea: b.programArea,
-          target: b.target, actual: b.actual, percent: b.percent,
-        } as Record<SortField, string | number>
-      )[sortField];
+      const aVal = ({ code: a.code, indicator: a.indicator, programArea: a.programArea, target: a.target, actual: a.actual, percent: a.percent }[sortField]);
+      const bVal = ({ code: b.code, indicator: b.indicator, programArea: b.programArea, target: b.target, actual: b.actual, percent: b.percent }[sortField]);
       if (typeof aVal === "string")
         return sortDir === "asc" ? aVal.localeCompare(bVal as string) : (bVal as string).localeCompare(aVal);
       return sortDir === "asc" ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
@@ -490,7 +465,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
 
   const stats = useMemo(() => {
     const all = indicators.map((ind) => {
-      const actual = getActualYTD(ind.code, monthlyData);
+      const actual = calculatePerformanceActual(ind.code, monthlyData);
       const pct = ind.target > 0 ? Math.round((actual / ind.target) * 100) : 0;
       return getStatus(pct);
     });
@@ -512,7 +487,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
           selectedYear, merged.code, merged.programArea, merged.subProgram,
           merged.indicator, merged.unit, merged.baseline, merged.target, user?.id ?? null
         );
-        toast.success("Indicator updated — live across all tabs ✓");
+        toast.success("Indicator updated successfully ✓");
       } catch {
         toast.error("Saved locally but failed to sync to database");
       }
@@ -529,7 +504,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
           selectedYear, ind.code, ind.programArea, ind.subProgram,
           ind.indicator, ind.unit, ind.baseline, ind.target, user?.id ?? null
         );
-        toast.success(`"${ind.indicator}" added — visible in all tabs ✓`);
+        toast.success(`"${ind.indicator}" added successfully ✓`);
       } catch {
         toast.error("Added locally but failed to sync to database");
       }
@@ -540,6 +515,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
 
   const handleDelete = useCallback(
     async (code: string) => {
+      if (!window.confirm("Are you sure you want to delete this indicator?")) return;
       setDeletingCode(code);
       try {
         await deleteAnnualPlan(selectedYear, code);
@@ -565,7 +541,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
       "% Achieved": r.percent,
       "Status": STATUS_CONFIG[r.status].label,
     }));
-    exportToCSV(data, `MasterPlan_${selectedYear}_${new Date().toISOString().split("T")[0]}`);
+    exportToCSV(data, `MasterPlan_${selectedYear}_Export`);
     toast.success("Exported as CSV");
   }, [rows, selectedYear]);
 
@@ -573,65 +549,25 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
   const hasFilters = search || filterArea !== "all" || filterStatus !== "all";
 
   return (
-    <div
-      className={cn(
-        "flex flex-col gap-4",
-        isFullscreen && "fixed inset-0 z-50 bg-background p-4 overflow-hidden"
-      )}
-    >
+    <div className={cn("flex flex-col gap-4", isFullscreen && "fixed inset-0 z-50 bg-background p-4 overflow-hidden")}>
+      
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <KpiCard
-          icon={<BarChart3 className="h-4 w-4 text-indigo-600" />}
-          label="Total Indicators"
-          value={stats.total}
-          sub={`${rows.length} shown`}
-          accent="#6366f1"
-        />
-        <KpiCard
-          icon={<CheckCircle2 className="h-4 w-4 text-emerald-600" />}
-          label="On Track ≥90%"
-          value={stats.onTrack}
-          sub={`${stats.total > 0 ? Math.round((stats.onTrack / stats.total) * 100) : 0}% of total`}
-          accent="#059669"
-        />
-        <KpiCard
-          icon={<AlertTriangle className="h-4 w-4 text-amber-600" />}
-          label="At Risk 70–89%"
-          value={stats.atRisk}
-          accent="#d97706"
-        />
-        <KpiCard
-          icon={<XCircle className="h-4 w-4 text-red-600" />}
-          label="Off Track <70%"
-          value={stats.offTrack}
-          accent="#dc2626"
-        />
+        <KpiCard icon={<BarChart3 className="h-4 w-4 text-indigo-600" />} label="Total Indicators" value={stats.total} sub={`${rows.length} shown`} accent="#6366f1" />
+        <KpiCard icon={<CheckCircle2 className="h-4 w-4 text-emerald-600" />} label="On Track ≥90%" value={stats.onTrack} sub={`${stats.total > 0 ? Math.round((stats.onTrack / stats.total) * 100) : 0}% of total`} accent="#059669" />
+        <KpiCard icon={<AlertTriangle className="h-4 w-4 text-amber-600" />} label="At Risk 70–89%" value={stats.atRisk} accent="#d97706" />
+        <KpiCard icon={<XCircle className="h-4 w-4 text-red-600" />} label="Off Track <70%" value={stats.offTrack} accent="#dc2626" />
       </div>
 
       {/* ── Toolbar ── */}
       <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center justify-between">
         <div className="flex flex-wrap gap-2 flex-1 min-w-0">
-          {/* Search */}
           <div className="relative min-w-[200px] flex-1 max-w-[320px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-            <Input
-              placeholder="Search code, name, area…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-8 text-sm"
-            />
-            {search && (
-              <button
-                onClick={() => setSearch("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
+            <Input placeholder="Search code, name, area…" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-8 text-sm" />
+            {search && <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /></button>}
           </div>
 
-          {/* Area filter */}
           <Select value={filterArea} onValueChange={setFilterArea}>
             <SelectTrigger className="h-8 w-[180px] text-xs">
               <Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
@@ -643,7 +579,6 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
             </SelectContent>
           </Select>
 
-          {/* Status filter buttons */}
           {(["all", "green", "yellow", "red"] as const).map((s) => (
             <button
               key={s}
@@ -651,23 +586,11 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
               className={cn(
                 "h-8 px-3 rounded-md text-xs font-semibold border transition-all",
                 filterStatus === s
-                  ? s === "all"
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : s === "green"
-                    ? "bg-emerald-600 text-white border-emerald-600"
-                    : s === "yellow"
-                    ? "bg-amber-500 text-white border-amber-500"
-                    : "bg-red-500 text-white border-red-500"
+                  ? s === "all" ? "bg-primary text-primary-foreground border-primary" : s === "green" ? "bg-emerald-600 text-white border-emerald-600" : s === "yellow" ? "bg-amber-500 text-white border-amber-500" : "bg-red-500 text-white border-red-500"
                   : "bg-background text-muted-foreground border-input hover:bg-muted"
               )}
             >
-              {s === "all"
-                ? "All"
-                : s === "green"
-                ? "✓ On Track"
-                : s === "yellow"
-                ? "⚠ At Risk"
-                : "✕ Off Track"}
+              {s === "all" ? "All" : s === "green" ? "✓ On Track" : s === "yellow" ? "⚠ At Risk" : "✕ Off Track"}
             </button>
           ))}
 
@@ -691,26 +614,63 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
                 <Plus className="h-3.5 w-3.5" />Add Indicator
               </Button>
             </DialogTrigger>
-            <AddIndicatorModal
-              uniqueProgramAreas={uniqueProgramAreas}
-              uniqueSubPrograms={uniqueSubPrograms}
-              onAdd={handleAdd}
-              onClose={() => setIsAddOpen(false)}
-            />
+            <AddIndicatorModal uniqueProgramAreas={uniqueProgramAreas} uniqueSubPrograms={uniqueSubPrograms} onAdd={handleAdd} onClose={() => setIsAddOpen(false)} />
           </Dialog>
         </div>
       </div>
 
-      {/* Results count */}
-      {hasFilters && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground -mt-1">
-          <Activity className="h-3.5 w-3.5" />
-          Showing <strong className="text-foreground">{rows.length}</strong> of{" "}
-          <strong className="text-foreground">{stats.total}</strong> indicators
+      {/* ── Table ── */}
+      <div className={cn("rounded-xl border bg-card shadow-sm overflow-hidden flex flex-col", isFullscreen && "flex-1 min-h-0")}>
+        <div className="overflow-auto flex-1">
+          <table className="w-full min-w-[1100px] text-sm border-collapse">
+            <thead className="sticky top-0 z-30 bg-muted/80 backdrop-blur-sm border-b">
+              <tr>
+                <SortTh field="code" label="Code" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky left-0 bg-muted z-40 border-r text-left w-[110px]" />
+                <SortTh field="indicator" label="Indicator" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-left min-w-[260px]" />
+                <SortTh field="programArea" label="Program Area" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-left min-w-[150px]" />
+                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-left min-w-[120px]">Sub-program</th>
+                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center w-[60px]">Unit</th>
+                <SortTh field="target" label="Target" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right w-[90px]" />
+                <SortTh field="actual" label="Actual" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right w-[90px]" />
+                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-left min-w-[160px]">Progress</th>
+                <SortTh field="percent" label="YoY" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-center w-[80px]" />
+                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center w-[90px]">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y bg-background">
+              {rows.map((row) => (
+                <tr key={row.code} className="hover:bg-muted/50 transition-colors group">
+                  <td className="p-3 font-mono text-xs font-semibold sticky left-0 bg-background group-hover:bg-muted border-r text-primary text-left">
+                    {row.code}
+                  </td>
+                  <td className="p-3 text-left font-medium max-w-[350px] truncate" title={row.indicator}>
+                    {row.indicator}
+                  </td>
+                  <td className="p-3 text-left text-muted-foreground text-xs">{row.programArea}</td>
+                  <td className="p-3 text-left text-muted-foreground text-xs">{row.subProgram}</td>
+                  <td className="p-3 text-center font-mono text-xs text-muted-foreground">{row.unit}</td>
+                  <td className="p-3 text-right font-mono font-semibold tabular-nums">{row.target}</td>
+                  <td className="p-3 text-right font-mono font-semibold text-indigo-600 tabular-nums">{row.actual}</td>
+                  <td className="p-3 text-left"><ProgressBar percent={row.percent} /></td>
+                  <td className="p-3 text-center"><YoYChip current={row.percent} previous={row.prevPercent} /></td>
+                  <td className="p-3 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <Button size="icon" variant="ghost" className="h-7 w-7 opacity-60 hover:opacity-100" onClick={() => setEditingIndicator(row)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 opacity-60 hover:opacity-100" onClick={() => handleDelete(row.code)} disabled={deletingCode === row.code}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
 
-      {/* Edit Dialog */}
+      {/* Edit Dialog rendering */}
       <Dialog open={!!editingIndicator} onOpenChange={(o) => { if (!o) setEditingIndicator(null); }}>
         {editingIndicator && (
           <EditIndicatorModal
@@ -723,172 +683,6 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
           />
         )}
       </Dialog>
-
-      {/* ── Table ── */}
-      <div
-        className={cn(
-          "rounded-xl border bg-card shadow-sm overflow-hidden flex flex-col",
-          isFullscreen && "flex-1 min-h-0"
-        )}
-      >
-        <div className="overflow-auto flex-1">
-          <table className="w-full min-w-[1100px] text-sm border-collapse">
-            <thead className="sticky top-0 z-30 bg-muted/80 backdrop-blur-sm border-b">
-              <tr>
-                <SortTh
-                  field="code"
-                  label="Code"
-                  sortField={sortField}
-                  sortDir={sortDir}
-                  onSort={handleSort}
-                  className="sticky left-0 bg-muted/80 z-40 border-r text-left w-[110px]"
-                />
-                <SortTh
-                  field="indicator"
-                  label="Indicator"
-                  sortField={sortField}
-                  sortDir={sortDir}
-                  onSort={handleSort}
-                  className="text-left min-w-[260px]"
-                />
-                <SortTh
-                  field="programArea"
-                  label="Program Area"
-                  sortField={sortField}
-                  sortDir={sortDir}
-                  onSort={handleSort}
-                  className="text-left min-w-[150px]"
-                />
-                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-left min-w-[120px]">
-                  Sub-program
-                </th>
-                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center w-[60px]">
-                  Unit
-                </th>
-                <SortTh
-                  field="target"
-                  label="Target"
-                  sortField={sortField}
-                  sortDir={sortDir}
-                  onSort={handleSort}
-                  className="text-right w-[90px]"
-                />
-                <SortTh
-                  field="actual"
-                  label="Actual YTD"
-                  sortField={sortField}
-                  sortDir={sortDir}
-                  onSort={handleSort}
-                  className="text-right w-[100px]"
-                />
-                <SortTh
-                  field="percent"
-                  label="Progress"
-                  sortField={sortField}
-                  sortDir={sortDir}
-                  onSort={handleSort}
-                  className="text-left w-[160px]"
-                />
-                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center w-[70px]">
-                  YoY
-                </th>
-                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center w-[90px]">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="p-8 text-center text-muted-foreground">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <AlertTriangle className="h-5 w-5 text-muted-foreground/70" />
-                      <p className="font-medium text-sm">No indicators match your criteria.</p>
-                      <button onClick={clearFilters} className="text-xs text-primary underline underline-offset-4">
-                        Reset Filters
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row) => (
-                  <tr key={row.code} className="hover:bg-muted/40 transition-colors group">
-                    {/* Fixed Code Column */}
-                    <td className="p-3 font-mono text-xs font-bold sticky left-0 bg-background group-hover:bg-muted/40 transition-colors border-r tabular-nums">
-                      {row.code}
-                    </td>
-                    {/* Indicator Name */}
-                    <td className="p-3 font-medium text-foreground max-w-[400px] break-words">
-                      {row.indicator}
-                    </td>
-                    {/* Program Area */}
-                    <td className="p-3 text-muted-foreground whitespace-nowrap text-xs">
-                      <Badge variant="outline" className="font-normal border-muted/60 bg-muted/20">
-                        {row.programArea}
-                      </Badge>
-                    </td>
-                    {/* Sub Program */}
-                    <td className="p-3 text-muted-foreground text-xs max-w-[150px] truncate" title={row.subProgram}>
-                      {row.subProgram}
-                    </td>
-                    {/* Unit */}
-                    <td className="p-3 text-center font-mono text-xs text-muted-foreground">
-                      {row.unit}
-                    </td>
-                    {/* Annual Target */}
-                    <td className="p-3 text-right font-mono text-xs font-semibold tabular-nums">
-                      {row.target.toLocaleString()}
-                    </td>
-                    {/* YTD Actual */}
-                    <td className="p-3 text-right font-mono text-xs font-semibold tabular-nums text-foreground">
-                      {row.actual.toLocaleString()}
-                    </td>
-                    {/* Progress Bar & Status Pill */}
-                    <td className="p-3 align-middle">
-                      <div className="flex flex-col gap-1.5 justify-center">
-                        <ProgressBar percent={row.percent} />
-                        <div className="flex">
-                          <StatusPill percent={row.percent} />
-                        </div>
-                      </div>
-                    </td>
-                    {/* Year over Year Comparison */}
-                    <td className="p-3 text-center align-middle">
-                      <YoYChip current={row.percent} previous={row.prevPercent} />
-                    </td>
-                    {/* Action Row Buttons */}
-                    <td className="p-3 text-center align-middle">
-                      <div className="flex items-center justify-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted"
-                          onClick={() => setEditingIndicator(row)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                          disabled={deletingCode === row.code}
-                          onClick={() => {
-                            if (confirm(`Are you sure you want to delete indicator ${row.code}?`)) {
-                              handleDelete(row.code);
-                            }
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 }
