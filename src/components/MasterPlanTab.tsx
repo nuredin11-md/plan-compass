@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import {
   getStatus,
   type MonthlyEntry,
@@ -6,6 +6,8 @@ import {
   distributeAnnualTarget,
 } from "@/data/hospitalIndicators";
 import { useIndicators } from "@/context/IndicatorsContext";
+import { useDatabase } from "@/hooks/useDatabase";
+import { mapToIndicators } from "../../hospitalDataSync";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -399,8 +401,26 @@ function AddIndicatorModal({
 
 export default function MasterPlanTab({ monthlyData, selectedYear, previousYearData }: Props) {
   const { user } = useAuth();
-  const { upsertAnnualPlan, deleteAnnualPlan } = useDatabase();
+  const { upsertHospitalPlan, deleteHospitalPlan, fetchHospitalPerformanceData } = useDatabase();
   const { indicators, addIndicator, updateIndicator, removeIndicator, isCustom } = useIndicators();
+
+  // Prefer hospital_plan_and_performance (full 230 records) mapped to Indicator shape
+  const [planIndicators, setPlanIndicators] = useState<Array<any>>([]);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const rows = await fetchHospitalPerformanceData();
+        if (!mounted) return;
+        const mapped = mapToIndicators(rows as any);
+        setPlanIndicators(mapped);
+      } catch (err) {
+        console.error('Failed to load hospital plan rows for MasterPlanTab', err);
+        setPlanIndicators([]);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [fetchHospitalPerformanceData]);
 
   const [search, setSearch] = useState("");
   const [filterArea, setFilterArea] = useState("all");
@@ -412,13 +432,15 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [deletingCode, setDeletingCode] = useState<string | null>(null);
 
+  const sourceIndicators = planIndicators && planIndicators.length > 0 ? planIndicators : indicators;
+
   const uniqueProgramAreas = useMemo(
-    () => Array.from(new Set(indicators.map((i) => i.programArea))).sort(),
-    [indicators]
+    () => Array.from(new Set(sourceIndicators.map((i) => i.programArea))).sort(),
+    [sourceIndicators]
   );
   const uniqueSubPrograms = useMemo(
-    () => Array.from(new Set(indicators.map((i) => i.subProgram))).sort(),
-    [indicators]
+    () => Array.from(new Set(sourceIndicators.map((i) => i.subProgram))).sort(),
+    [sourceIndicators]
   );
 
   const handleSort = useCallback(
@@ -430,7 +452,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
   );
 
   const rows = useMemo(() => {
-    let list = indicators.map((ind) => {
+    let list = sourceIndicators.map((ind) => {
       // አዲሱን የ9 ወራት አፈጻጸም እውነተኛ መረጃ እዚህ ጋር ያገናኛል
       const actual = calculatePerformanceActual(ind.code, monthlyData);
       const percent = ind.target > 0 ? Math.round((actual / ind.target) * 100) : 0;
@@ -461,10 +483,10 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
     });
 
     return list;
-  }, [indicators, monthlyData, previousYearData, search, filterArea, filterStatus, sortField, sortDir]);
+  }, [sourceIndicators, monthlyData, previousYearData, search, filterArea, filterStatus, sortField, sortDir]);
 
   const stats = useMemo(() => {
-    const all = indicators.map((ind) => {
+    const all = sourceIndicators.map((ind) => {
       const actual = calculatePerformanceActual(ind.code, monthlyData);
       const pct = ind.target > 0 ? Math.round((actual / ind.target) * 100) : 0;
       return getStatus(pct);
@@ -483,7 +505,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
       updateIndicator(editingIndicator.code, patch);
       try {
         const merged = { ...editingIndicator, ...patch };
-        await upsertAnnualPlan(
+        await upsertHospitalPlan(
           selectedYear, merged.code, merged.programArea, merged.subProgram,
           merged.indicator, merged.unit, merged.baseline, merged.target, user?.id ?? null
         );
@@ -500,7 +522,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
       const ok = addIndicator(ind as any);
       if (!ok) { toast.error("An indicator with this code already exists"); return false; }
       try {
-        await upsertAnnualPlan(
+        await upsertHospitalPlan(
           selectedYear, ind.code, ind.programArea, ind.subProgram,
           ind.indicator, ind.unit, ind.baseline, ind.target, user?.id ?? null
         );
@@ -518,7 +540,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
       if (!window.confirm("Are you sure you want to delete this indicator?")) return;
       setDeletingCode(code);
       try {
-        await deleteAnnualPlan(selectedYear, code);
+        await deleteHospitalPlan(selectedYear, code);
         removeIndicator(code);
         toast.success("Indicator removed from all tabs");
       } catch {

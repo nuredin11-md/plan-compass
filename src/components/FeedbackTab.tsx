@@ -1,5 +1,6 @@
 import { useMemo, useState, useRef, useCallback } from "react";
-import { indicators, getActualYTD, getStatus, getProgramAreas, MONTHS, type MonthlyEntry } from "@/data/hospitalIndicators";
+import { getActualYTD, getStatus, getProgramAreas, MONTHS, type MonthlyEntry } from "@/data/hospitalIndicators";
+import { useIndicators } from "@/context/IndicatorsContext";
 import { getDepartmentFeedbackData, getPeriodicPerformanceFeedback } from "@/lib/exportUtils";
 import { exportToPDF } from "@/lib/exportUtils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -24,6 +25,7 @@ const STATUS_COLORS_HEX = {
 export default function FeedbackTab({ monthlyData }: Props) {
   const [selectedArea, setSelectedArea] = useState("all");
   const [timePeriod, setTimePeriod] = useState<"monthly" | "quarterly" | "semiannual" | "annual">("quarterly");
+  const { indicators } = useIndicators();
 
   const feedbackData = useMemo(() => getDepartmentFeedbackData(monthlyData), [monthlyData]);
   const periodicFeedback = useMemo(() => getPeriodicPerformanceFeedback(monthlyData, timePeriod), [monthlyData, timePeriod]);
@@ -31,7 +33,7 @@ export default function FeedbackTab({ monthlyData }: Props) {
   // Validate data availability for feedback generation
   const dataValidation = useMemo(() => {
     if (selectedArea === "all") {
-      const allAreas = getProgramAreas();
+      const allAreas = [...new Set(indicators.map((i) => i.programArea))];
       const validations = new Map<string, ReturnType<typeof shouldGenerateFeedback>>();
       allAreas.forEach((area) => {
         const areaInds = indicators.filter((i) => i.programArea === area);

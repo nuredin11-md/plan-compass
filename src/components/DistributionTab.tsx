@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Send, MessageCircle, Check, Share2, AlertCircle } from "lucide-react";
-import { type MonthlyEntry, indicators, getActualYTD, getStatus } from "@/data/hospitalIndicators";
+import { type MonthlyEntry, getActualYTD, getStatus } from "@/data/hospitalIndicators";
+import { useIndicators } from "@/context/IndicatorsContext";
 import { toast } from "@/hooks/use-toast";
 import { SecureStorage, InputValidator } from "@/lib/securityUtils";
 
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export default function DistributionTab({ monthlyData }: Props) {
+  const { indicators } = useIndicators();
   const [telegramConnected, setTelegramConnected] = useState(false);
   const [whatsappConnected, setWhatsappConnected] = useState(false);
   const [telegramBotToken, setTelegramBotToken] = useState("");

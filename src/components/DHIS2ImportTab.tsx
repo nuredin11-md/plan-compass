@@ -1,7 +1,8 @@
 import { useState, useCallback, useMemo } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
-import { indicators, MONTHS, type MonthlyEntry } from "@/data/hospitalIndicators";
+import { MONTHS, type MonthlyEntry } from "@/data/hospitalIndicators";
+import { useIndicators } from "@/context/IndicatorsContext";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, FileText, ArrowRight } from "lucide-react";
@@ -23,6 +24,7 @@ interface ParsedRow {
 }
 
 export default function DHIS2ImportTab({ monthlyData, setMonthlyData }: Props) {
+  const { indicators } = useIndicators();
   const [parsedData, setParsedData] = useState<ParsedRow[]>([]);
   const [fileName, setFileName] = useState("");
   const [mappedMonth, setMappedMonth] = useState("");

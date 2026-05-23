@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { generateSampleMonthlyData, indicators, type MonthlyEntry } from "@/data/hospitalIndicators";
+import { type MonthlyEntry, setIndicatorsFromDB } from "@/data/hospitalIndicators";
 import { useAuth } from "@/hooks/useAuth";
 import { useDatabase } from "@/hooks/useDatabase";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
@@ -21,13 +21,16 @@ import WorkspaceTab from "@/components/WorkspaceTab";
 import HospitalPerformanceTab from "@/components/HospitalPerformanceTab";
 import { BackupManager } from "@/lib/backupUtils";
 import { AuditLogger } from "@/lib/securityUtils";
-import { mergeMonthlyData } from "@/lib/databaseSync";
+import { mergeMonthlyData, convertMonthlyDataToEntries } from "@/lib/databaseSync";
+import { mapToIndicators } from "../../hospitalDataSync";
+import { useIndicators } from "@/context/IndicatorsContext";
 import { LogOut, User, Cloud, CloudOff, Wifi, WifiOff, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 const Index = () => {
   const { user, profile, role, signOut } = useAuth();
   const { fetchMonthlyData, fetchHospitalPerformanceData } = useDatabase();
+  const { indicators } = useIndicators();
   const { isOnline, isSyncing, syncError, pendingSyncCount, manualSync, isDatabaseAvailable } = useOfflineSync();
   const currentCalendarYear = new Date().getFullYear();
 
@@ -54,15 +57,18 @@ const Index = () => {
   const loadYearData = useCallback(
     async (year: number) => {
       try {
+        // Use the current indicator catalog from context; fall back to plan rows for mapping only.
+        const indicatorSource = indicators.length
+          ? (indicators as any)
+          : mapToIndicators(await fetchHospitalPerformanceData());
+
+        // Fetch monthly_entries and convert to app MonthlyEntry[]
         const dbData = await fetchMonthlyData(year);
-        const sampleData = generateSampleMonthlyData();
-        
-        // Merge database data with sample data structure
-        const mergedData = mergeMonthlyData(sampleData, dbData);
-        
+        const converted = convertMonthlyDataToEntries(dbData, indicatorSource);
+
         setYearlyData((prev) => ({
           ...prev,
-          [year]: mergedData,
+          [year]: converted,
         }));
 
         AuditLogger.logAction(
@@ -78,15 +84,15 @@ const Index = () => {
         );
       } catch (error) {
         console.error(`Failed to load data for year ${year}:`, error);
-        // Fall back to sample data if database load fails
+        // Fall back to empty dataset if database load fails
         setYearlyData((prev) => ({
           ...prev,
-          [year]: generateSampleMonthlyData(),
+          [year]: [],
         }));
         toast.error(`Failed to load data for ${year}`);
       }
     },
-    [fetchMonthlyData, user?.id]
+    [fetchMonthlyData, fetchHospitalPerformanceData, indicators, user?.id]
   );
 
   // Load current year and previous year on mount
@@ -105,6 +111,25 @@ const Index = () => {
     };
     loadInitialData();
     }, [currentCalendarYear, loadYearData, fetchHospitalPerformanceData]);
+
+  useEffect(() => {
+    if (indicators.length === 0) return;
+
+    setYearlyData((prev) => {
+      const updated: Record<number, MonthlyEntry[]> = {};
+
+      for (const [year, entries] of Object.entries(prev)) {
+        updated[Number(year)] = entries.map((entry) => {
+          const match = indicators.find((ind) => ind.code === entry.code);
+          return match
+            ? { ...entry, target: match.target, baseline: match.baseline }
+            : entry;
+        });
+      }
+
+      return updated;
+    });
+  }, [indicators]);
 
   const handleYearChange = async (newYear: number) => {
     setSelectedYear(newYear);

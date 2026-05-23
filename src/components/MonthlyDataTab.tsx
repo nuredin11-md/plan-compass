@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { indicators, MONTHS, type MonthlyEntry } from "@/data/hospitalIndicators";
+import { MONTHS, type MonthlyEntry } from "@/data/hospitalIndicators";
+import { useIndicators } from "@/context/IndicatorsContext";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -10,6 +11,7 @@ import { toast } from "sonner";
 import { InputValidator, AuditLogger, DataValidator } from "@/lib/securityUtils";
 import { useAuth } from "@/hooks/useAuth";
 import { useDatabase } from "@/hooks/useDatabase";
+import { mapToIndicators } from "../../hospitalDataSync";
 
 interface Props {
   monthlyData: MonthlyEntry[];
@@ -22,7 +24,27 @@ type SaveStatus = "saved" | "saving" | "pending" | "error";
 export default function MonthlyDataTab({ monthlyData, setMonthlyData, selectedYear = new Date().getFullYear() }: Props) {
   const { user, profile } = useAuth();
   const { upsertMonthlyData } = useDatabase();
-  const [selectedCode, setSelectedCode] = useState(indicators[0].code);
+  const { indicators } = useIndicators();
+  const { fetchHospitalPerformanceData } = useDatabase();
+
+  const [planIndicators, setPlanIndicators] = useState<any[]>([]);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const rows = await fetchHospitalPerformanceData();
+        if (!mounted) return;
+        setPlanIndicators(mapToIndicators(rows as any));
+      } catch (err) {
+        console.error('Failed to load plan indicators for MonthlyDataTab', err);
+        setPlanIndicators([]);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [fetchHospitalPerformanceData]);
+
+  const sourceIndicators = planIndicators && planIndicators.length > 0 ? planIndicators : indicators;
+  const [selectedCode, setSelectedCode] = useState(sourceIndicators[0]?.code ?? "");
   const [selectedMonth, setSelectedMonth] = useState(MONTHS[0]);
   const [search, setSearch] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
@@ -32,7 +54,7 @@ export default function MonthlyDataTab({ monthlyData, setMonthlyData, selectedYe
   const [completedEntries, setCompletedEntries] = useState<Set<string>>(new Set());
 
   // 1. Find the master plan indicator details
-  const currentIndicator = indicators.find((i) => i.code === selectedCode);
+  const currentIndicator = sourceIndicators.find((i) => i.code === selectedCode);
 
   // 2. Find the specific data entry for this Indicator + Month combo
   const currentEntry = monthlyData.find(
@@ -40,13 +62,20 @@ export default function MonthlyDataTab({ monthlyData, setMonthlyData, selectedYe
   );
 
   const filteredIndicators = useMemo(() => {
-    if (!search) return indicators;
-    return indicators.filter(
+    if (!search) return sourceIndicators;
+    return sourceIndicators.filter(
       (i) =>
         i.code.toLowerCase().includes(search.toLowerCase()) ||
         i.indicator.toLowerCase().includes(search.toLowerCase())
     );
-  }, [search]);
+  }, [search, sourceIndicators]);
+
+  // When indicators load, ensure a selected code exists
+  useEffect(() => {
+    if (!selectedCode && sourceIndicators.length > 0) {
+      setSelectedCode(sourceIndicators[0].code);
+    }
+  }, [sourceIndicators, selectedCode]);
 
   // Check if current entry is marked complete
   useEffect(() => {

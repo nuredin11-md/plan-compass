@@ -4,7 +4,7 @@
  */
 
 import type { MonthlyEntry, Indicator } from "@/data/hospitalIndicators";
-import { indicators, MONTHS } from "@/data/hospitalIndicators";
+import { MONTHS } from "@/data/hospitalIndicators";
 
 export interface DataValidationResult {
   hasData: boolean;

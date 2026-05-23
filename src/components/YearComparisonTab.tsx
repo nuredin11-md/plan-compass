@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { indicators, getStatus, getActualYTD, getProgramAreas, MONTHS, type MonthlyEntry } from "@/data/hospitalIndicators";
+import { getStatus, getActualYTD, MONTHS, type MonthlyEntry } from "@/data/hospitalIndicators";
+import { useIndicators } from "@/context/IndicatorsContext";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
   LineChart, Line,
@@ -17,7 +18,8 @@ const STATUS_COLORS_HEX = { green: "#22895a", yellow: "#cc8000", red: "#dc2626" 
 
 export default function YearComparisonTab({ monthlyData, compareData, currentYear, compareYear }: Props) {
   const [selectedArea, setSelectedArea] = useState("all");
-  const areas = getProgramAreas();
+  const { indicators } = useIndicators();
+  const areas = useMemo(() => [...new Set(indicators.map((i) => i.programArea))], [indicators]);
 
   const getFilteredIndicators = () => {
     return selectedArea === "all" ? indicators : indicators.filter((i) => i.programArea === selectedArea);
