@@ -7,7 +7,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { getActualYTD, getStatus } from "@/data/hospitalIndicators";
 import type { MonthlyEntry } from "@/data/hospitalIndicators";
-import { useIndicators } from "@/context/IndicatorsContext";
+import { useEffect, useState } from "react";
+import { useDatabase } from "@/hooks/useDatabase";
+import { mapToIndicators } from "../../hospitalDataSync";
  
 // ── Types ─────────────────────────────────────────────────────────────────────
  
@@ -429,6 +431,21 @@ export default function RecognitionBoard({
   monthlyData?: MonthlyEntry[];
 }) {
   const [weights] = useState<WeightCriteria[]>(DEFAULT_WEIGHTS);
+  const { fetchHospitalPerformanceData } = useDatabase();
+  const [planIndicators, setPlanIndicators] = useState<any[]>([]);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const rows = await fetchHospitalPerformanceData();
+        if (!mounted) return;
+        setPlanIndicators(mapToIndicators(rows as any));
+      } catch (err) {
+        console.error('RecognitionBoard: failed to fetch plan indicators', err);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [fetchHospitalPerformanceData]);
   const [expandedPodium, setExpandedPodium] = useState<number | null>(null);
   const [viewTab, setViewTab] = useState("podium");
  

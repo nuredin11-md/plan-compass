@@ -20,7 +20,6 @@ import {
   AlertTriangle, CheckCircle2, XCircle, Filter, BarChart3,
   Target, Activity, RefreshCw, Info, Download,
 } from "lucide-react";
-import { useDatabase } from "@/hooks/useDatabase";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -497,7 +496,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
       atRisk: all.filter((s) => s === "yellow").length,
       offTrack: all.filter((s) => s === "red").length,
     };
-  }, [indicators, monthlyData]);
+  }, [sourceIndicators, monthlyData]);
 
   const handleSaveEdit = useCallback(
     async (patch: Partial<Indicator>) => {
@@ -514,7 +513,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
         toast.error("Saved locally but failed to sync to database");
       }
     },
-    [editingIndicator, updateIndicator, upsertAnnualPlan, selectedYear, user]
+      [editingIndicator, updateIndicator, upsertHospitalPlan, selectedYear, user]
   );
 
   const handleAdd = useCallback(
@@ -532,7 +531,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
       }
       return true;
     },
-    [addIndicator, upsertAnnualPlan, selectedYear, user]
+    [addIndicator, upsertHospitalPlan, selectedYear, user]
   );
 
   const handleDelete = useCallback(
@@ -547,7 +546,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
         toast.error("Failed to delete — please try again");
       } finally { setDeletingCode(null); }
     },
-    [deleteAnnualPlan, removeIndicator, selectedYear]
+    [deleteHospitalPlan, removeIndicator, selectedYear]
   );
 
   const handleExportCSV = useCallback(() => {

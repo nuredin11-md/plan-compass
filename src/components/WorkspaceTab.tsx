@@ -1,14 +1,14 @@
 import RecognitionBoard from "./RecognitionBoard";
 import { Award } from "lucide-react";
-import { useMemo, useState, useCallback, useRef } from "react";
+import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import {
-  indicators,
   getActualYTD,
   getStatus,
-  getProgramAreas,
   MONTHS,
   type MonthlyEntry,
 } from "@/data/hospitalIndicators";
+import { useDatabase } from "@/hooks/useDatabase";
+import { mapToIndicators } from "../../hospitalDataSync";
 import {
   Select,
   SelectContent,
@@ -186,6 +186,24 @@ const SectionTitle = ({
 // ── Main Component ────────────────────────────────────────────────────────────
  
 export default function WorkspaceTab({ monthlyData }: Props) {
+  const { fetchHospitalPerformanceData } = useDatabase();
+  const [planIndicators, setPlanIndicators] = useState<any[]>([]);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const rows = await fetchHospitalPerformanceData();
+        if (!mounted) return;
+        setPlanIndicators(mapToIndicators(rows as any));
+      } catch (err) {
+        console.error('Failed to load plan indicators for WorkspaceTab', err);
+        setPlanIndicators([]);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [fetchHospitalPerformanceData]);
+
+  const sourceIndicators = planIndicators && planIndicators.length > 0 ? planIndicators : [];
   const [selectedArea, setSelectedArea] = useState("all");
   const [analysisPeriod, setAnalysisPeriod] = useState("monthly");
   const [referenceMonth, setReferenceMonth] = useState(MONTHS[MONTHS.length - 1]);
@@ -193,12 +211,12 @@ export default function WorkspaceTab({ monthlyData }: Props) {
   const [groupBy, setGroupBy] = useState<"department" | "indicator" | "status">("department");
   const printRef = useRef<HTMLDivElement>(null);
  
-  const areas = getProgramAreas();
+  const areas = useMemo(() => Array.from(new Set(sourceIndicators.map((i) => i.programArea))).sort(), [sourceIndicators]);
  
   // ── Computed Data ──────────────────────────────────────────────────────────
  
   const indicatorPerformance = useMemo(() => {
-    const list = selectedArea === "all" ? indicators : indicators.filter((i) => i.programArea === selectedArea);
+    const list = selectedArea === "all" ? sourceIndicators : sourceIndicators.filter((i) => i.programArea === selectedArea);
     return list.map((ind) => {
       const actual = getActualYTD(ind.code, monthlyData);
       const percent = ind.target === 0 ? 0 : Math.round((actual / ind.target) * 100);
@@ -222,7 +240,7 @@ export default function WorkspaceTab({ monthlyData }: Props) {
  
   const deptSummary = useMemo(() =>
     areas.map((area) => {
-      const areaInds = indicators.filter((i) => i.programArea === area);
+      const areaInds = sourceIndicators.filter((i) => i.programArea === area);
       let green = 0, yellow = 0, red = 0, totalPercent = 0;
       areaInds.forEach((ind) => {
         const actual = getActualYTD(ind.code, monthlyData);
@@ -262,7 +280,7 @@ export default function WorkspaceTab({ monthlyData }: Props) {
  
   const monthlyTrend = useMemo(() =>
     MONTHS.map((month) => {
-      const filterInds = selectedArea === "all" ? indicators : indicators.filter((i) => i.programArea === selectedArea);
+      const filterInds = selectedArea === "all" ? sourceIndicators : sourceIndicators.filter((i) => i.programArea === selectedArea);
       let total = 0, count = 0;
       filterInds.forEach((ind) => {
         const e = monthlyData.find((x) => x.code === ind.code && x.month === month);
@@ -277,7 +295,7 @@ export default function WorkspaceTab({ monthlyData }: Props) {
     }), [monthlyData, selectedArea]);
  
   const cumulativeTrend = useMemo(() => {
-    const filterInds = selectedArea === "all" ? indicators : indicators.filter((i) => i.programArea === selectedArea);
+    const filterInds = selectedArea === "all" ? sourceIndicators : sourceIndicators.filter((i) => i.programArea === selectedArea);
     return MONTHS.map((month, idx) => {
       let totalActual = 0, totalTarget = 0;
       filterInds.forEach((ind) => {
@@ -304,7 +322,7 @@ export default function WorkspaceTab({ monthlyData }: Props) {
  
   const radarData = useMemo(() =>
     areas.map((area) => {
-      const areaInds = indicators.filter((i) => i.programArea === area);
+      const areaInds = sourceIndicators.filter((i) => i.programArea === area);
       let total = 0;
       areaInds.forEach((ind) => {
         const actual = getActualYTD(ind.code, monthlyData);

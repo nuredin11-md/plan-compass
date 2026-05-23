@@ -18,7 +18,6 @@ import YearComparisonTab from "@/components/YearComparisonTab";
 import ExportButton from "@/components/ExportButton";
 import AboutUsTab from "@/components/AboutUsTab";
 import WorkspaceTab from "@/components/WorkspaceTab";
-import HospitalPerformanceTab from "@/components/HospitalPerformanceTab";
 import { BackupManager } from "@/lib/backupUtils";
 import { AuditLogger } from "@/lib/securityUtils";
 import { mergeMonthlyData, convertMonthlyDataToEntries } from "@/lib/databaseSync";
@@ -238,7 +237,7 @@ const Index = () => {
           </div>
         );
       case "performance":
-        return <HospitalPerformanceTab />;
+        return null;
       case "feedback":
         return <FeedbackTab monthlyData={monthlyData} />;
       case "about":
