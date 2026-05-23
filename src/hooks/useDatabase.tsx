@@ -1,5 +1,10 @@
 import { useCallback, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  fetchHospitalPerformanceRows,
+  upsertHospitalPlanRow,
+  deleteHospitalPlanRow,
+} from "@/lib/hospitalPerformanceIntegration";
 import type { MonthlyEntry, Indicator } from "@/data/hospitalIndicators";
 import {
   saveMonthlyDataOffline,
@@ -298,23 +303,7 @@ export function useDatabase() {
         setLoading(true);
         setError(null);
 
-        let query = supabase
-          .from("hospital_plan_and_performance")
-          .select("*");
-
-        if (filters?.category) {
-          query = query.eq("category", filters.category);
-        }
-        if (filters?.fiscal_year) {
-          query = query.eq("fiscal_year", filters.fiscal_year);
-        }
-        if (filters?.metric_type) {
-          query = query.eq("metric_type", filters.metric_type);
-        }
-
-        const { data, error: queryError } = await query.order("fiscal_year", { ascending: false });
-
-        if (queryError) throw queryError;
+        const data = await fetchHospitalPerformanceRows(filters);
         return data || [];
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to fetch hospital performance data";
@@ -348,7 +337,7 @@ export function useDatabase() {
             category: program_area,
             indicator_name: indicator_code,
             fiscal_year,
-            metric_type: 'Plan',
+            metric_type: "Plan",
             metric_value: target,
             percentage_value: null,
             status: unit,
@@ -356,13 +345,7 @@ export function useDatabase() {
             created_at: new Date().toISOString(),
           } as any;
 
-          const { data, error: upsertError } = await supabase
-            .from('hospital_plan_and_performance')
-            .upsert([payload], { onConflict: 'indicator_name,fiscal_year,metric_type' })
-            .select()
-            .single();
-
-          if (upsertError) throw upsertError;
+          const data = await upsertHospitalPlanRow(payload);
           return data as HospitalPlanPerformance;
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Failed to save hospital plan';
@@ -379,14 +362,7 @@ export function useDatabase() {
         try {
           setError(null);
           const fiscal_year = `${year} EFY`;
-          const { error: deleteError } = await supabase
-            .from('hospital_plan_and_performance')
-            .delete()
-            .eq('fiscal_year', fiscal_year)
-            .eq('indicator_name', indicator_code)
-            .eq('metric_type', 'Plan');
-
-          if (deleteError) throw deleteError;
+          await deleteHospitalPlanRow(fiscal_year, indicator_code);
           return true;
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Failed to delete hospital plan';
