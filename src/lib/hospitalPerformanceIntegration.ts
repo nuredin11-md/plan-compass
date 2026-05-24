@@ -4,6 +4,7 @@ import { normalizeEFYString } from "@/lib/ethiopianCalendar";
 
 // የዳታቤዙን ትክክለኛ የረድፍ ታይፕ እንወስዳለን
 export type HospitalPlanPerformance = Database["public"]["Tables"]["hospital_plan_and_performance"]["Row"];
+export type HospitalPlanPerformanceInsert = Database["public"]["Tables"]["hospital_plan_and_performance"]["Insert"];
 
 /**
  * Convert hospital performance data to work with existing monthly data structure
@@ -170,7 +171,7 @@ export async function fetchHospitalPerformanceRows(filters?: {
   fiscal_year?: string;
   metric_type?: string;
 }): Promise<HospitalPlanPerformance[]> {
-  let query = supabase.from<HospitalPlanPerformance>("hospital_plan_and_performance").select("*");
+  let query = supabase.from("hospital_plan_and_performance").select("*");
   if (filters?.category) query = query.eq("category", filters.category);
   if (filters?.fiscal_year) {
     const normalized = normalizeEFYString(filters.fiscal_year);
@@ -189,19 +190,22 @@ export async function fetchHospitalPerformanceRows(filters?: {
   return data || [];
 }
 
-export async function upsertHospitalPlanRow(payload: Partial<HospitalPlanPerformance>) {
+export async function upsertHospitalPlanRow(payload: HospitalPlanPerformanceInsert) {
   const { data, error } = await supabase
-    .from<HospitalPlanPerformance>("hospital_plan_and_performance")
+    .from("hospital_plan_and_performance")
     .upsert([payload], { onConflict: "indicator_name,fiscal_year,metric_type" })
     .select()
     .single();
   if (error) throw error;
-  return data as HospitalPlanPerformance;
+  if (!data) {
+    throw new Error('No data returned after upsert.');
+  }
+  return data;
 }
 
 export async function deleteHospitalPlanRow(fiscal_year: string, indicator_name: string) {
   const { error } = await supabase
-    .from<HospitalPlanPerformance>("hospital_plan_and_performance")
+    .from("hospital_plan_and_performance")
     .delete()
     .eq("fiscal_year", fiscal_year)
     .eq("indicator_name", indicator_name)
