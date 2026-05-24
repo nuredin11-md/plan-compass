@@ -23,7 +23,14 @@ import { AuditLogger } from "@/lib/securityUtils";
 import { mergeMonthlyData, convertMonthlyDataToEntries } from "@/lib/databaseSync";
 import { mapToIndicators } from "../../hospitalDataSync";
 import { useIndicators } from "@/context/IndicatorsContext";
-import { LogOut, User, Cloud, CloudOff, Wifi, WifiOff, RefreshCw } from "lucide-react";
+import {
+  AVAILABLE_EFY_YEARS,
+  getCurrentEFY,
+  getPreviousEFY,
+  formatEFYDisplay,
+  getEFYNumber,
+} from "@/lib/ethiopianCalendar";
+import { LogOut, User, Cloud, CloudOff, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 const Index = () => {
@@ -31,113 +38,136 @@ const Index = () => {
   const { fetchMonthlyData, fetchHospitalPerformanceData } = useDatabase();
   const { indicators } = useIndicators();
   const { isOnline, isSyncing, syncError, pendingSyncCount, manualSync, isDatabaseAvailable } = useOfflineSync();
-  const currentCalendarYear = new Date().getFullYear();
 
-  const [selectedYear, setSelectedYear] = useState(currentCalendarYear);
-  const [compareYear, setCompareYear] = useState<number | null>(null);
-  const [yearlyData, setYearlyData] = useState<Record<number, MonthlyEntry[]>>({});
+  // ── EFY year state (replaces Gregorian selectedYear) ─────────────────────────
+  const [selectedEFY, setSelectedEFY] = useState<string>(getCurrentEFY());
+  const [compareEFY, setCompareEFY] = useState<string | null>(null);
+
+  // Keep a numeric version for components that still need it
+  const selectedYear = getEFYNumber(selectedEFY);
+  const compareYear = compareEFY ? getEFYNumber(compareEFY) : null;
+
+  const [yearlyData, setYearlyData] = useState<Record<string, MonthlyEntry[]>>({});
   const [hospitalPerformanceData, setHospitalPerformanceData] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isLoadingData, setIsLoadingData] = useState(true);
 
-  const monthlyData = yearlyData[selectedYear] || [];
-  const compareData = compareYear ? yearlyData[compareYear] : undefined;
+  const monthlyData = yearlyData[selectedEFY] || [];
+  const compareData = compareEFY ? yearlyData[compareEFY] : undefined;
 
-  const setMonthlyData = useCallback((updater: React.SetStateAction<MonthlyEntry[]>) => {
-    setYearlyData((prev) => ({
-      ...prev,
-      [selectedYear]: typeof updater === "function" ? updater(prev[selectedYear] || []) : updater,
-    }));
-  }, [selectedYear]);
+  // Available EFY years that have data loaded
+  const availableEFYYears = AVAILABLE_EFY_YEARS;
 
-  const availableYears = Object.keys(yearlyData).map(Number).sort((a, b) => b - a);
+  const setMonthlyData = useCallback(
+    (updater: React.SetStateAction<MonthlyEntry[]>) => {
+      setYearlyData((prev) => ({
+        ...prev,
+        [selectedEFY]:
+          typeof updater === "function"
+            ? updater(prev[selectedEFY] || [])
+            : updater,
+      }));
+    },
+    [selectedEFY]
+  );
 
-  // Load data from database for a specific year
+  // Load data for a specific EFY year
   const loadYearData = useCallback(
-    async (year: number) => {
+    async (efyYear: string) => {
       try {
-        // Use the current indicator catalog from context; fall back to plan rows for mapping only.
         const indicatorSource = indicators.length
           ? (indicators as any)
           : mapToIndicators(await fetchHospitalPerformanceData());
 
-        // Fetch monthly_entries and convert to app MonthlyEntry[]
-        const dbData = await fetchMonthlyData(year);
-        const converted = convertMonthlyDataToEntries(dbData, indicatorSource);
+        // Fetch hospital performance data filtered by EFY year
+        const perfData = await fetchHospitalPerformanceData({
+          fiscal_year: efyYear,
+        });
+
+        // Convert performance data to MonthlyEntry format
+        const entries: MonthlyEntry[] = perfData
+          .filter((row) => row.metric_type === "Performance")
+          .map((row) => ({
+            code: row.indicator_name
+              .toUpperCase()
+              .replace(/[^A-Z0-9]+/g, "_")
+              .replace(/^_+|_+$/g, "")
+              .slice(0, 40),
+            month: "Annual",
+            actual: row.metric_value ?? 0,
+            remarks: row.remark ?? "",
+          }));
 
         setYearlyData((prev) => ({
           ...prev,
-          [year]: converted,
+          [efyYear]: entries,
         }));
 
         AuditLogger.logAction(
           user?.id || "system",
           "DATA_LOADED",
-          "monthly_data",
+          "hospital_plan_and_performance",
           "success",
           {
-            year,
-            recordCount: dbData.length,
+            efyYear,
+            recordCount: perfData.length,
             timestamp: new Date().toISOString(),
           }
         );
       } catch (error) {
-        console.error(`Failed to load data for year ${year}:`, error);
-        // Fall back to empty dataset if database load fails
-        setYearlyData((prev) => ({
-          ...prev,
-          [year]: [],
-        }));
-        toast.error(`Failed to load data for ${year}`);
+        console.error(`Failed to load data for ${efyYear}:`, error);
+        setYearlyData((prev) => ({ ...prev, [efyYear]: [] }));
+        toast.error(`Failed to load data for ${efyYear}`);
       }
     },
-    [fetchMonthlyData, fetchHospitalPerformanceData, indicators, user?.id]
+    [fetchHospitalPerformanceData, indicators, user?.id]
   );
 
-  // Load current year and previous year on mount
+  // Load current and previous EFY on mount
   useEffect(() => {
     const loadInitialData = async () => {
       setIsLoadingData(true);
       try {
-        await loadYearData(currentCalendarYear);
-        await loadYearData(currentCalendarYear - 1);
-          // Load hospital performance data
-          const performanceData = await fetchHospitalPerformanceData();
-          setHospitalPerformanceData(performanceData);
+        const currentEFY = getCurrentEFY();
+        const prevEFY = getPreviousEFY(currentEFY);
+        await loadYearData(currentEFY);
+        await loadYearData(prevEFY);
+
+        // Load all hospital performance data (unfiltered) for indicators
+        const performanceData = await fetchHospitalPerformanceData();
+        setHospitalPerformanceData(performanceData);
       } finally {
         setIsLoadingData(false);
       }
     };
     loadInitialData();
-    }, [currentCalendarYear, loadYearData, fetchHospitalPerformanceData]);
+  }, [loadYearData, fetchHospitalPerformanceData]);
 
+  // Sync indicator targets when indicators change
   useEffect(() => {
     if (indicators.length === 0) return;
-
     setYearlyData((prev) => {
-      const updated: Record<number, MonthlyEntry[]> = {};
-
-      for (const [year, entries] of Object.entries(prev)) {
-        updated[Number(year)] = entries.map((entry) => {
+      const updated: Record<string, MonthlyEntry[]> = {};
+      for (const [efy, entries] of Object.entries(prev)) {
+        updated[efy] = entries.map((entry) => {
           const match = indicators.find((ind) => ind.code === entry.code);
           return match
             ? { ...entry, target: match.target, baseline: match.baseline }
             : entry;
         });
       }
-
       return updated;
     });
   }, [indicators]);
 
-  const handleYearChange = async (newYear: number) => {
-    setSelectedYear(newYear);
-    
-    // Load data for the new year if not already loaded
-    if (!yearlyData[newYear]) {
-      await loadYearData(newYear);
+  const handleEFYChange = async (newEFY: string) => {
+    setSelectedEFY(newEFY);
+    if (!yearlyData[newEFY]) {
+      await loadYearData(newEFY);
     }
   };
+
+  // Auto-backup every 30 minutes
   useEffect(() => {
     const autoBackupInterval = setInterval(() => {
       try {
@@ -148,83 +178,75 @@ const Index = () => {
             "system",
             `Auto-backup at ${new Date().toLocaleString()}`
           );
-          AuditLogger.logAction(
-            "system",
-            "AUTO_BACKUP_CREATED",
-            "backup_management",
-            "success",
-            {
-              dataCount: monthlyData.length,
-              timestamp: new Date().toISOString(),
-            }
-          );
         }
       } catch (error) {
-        AuditLogger.logSecurityEvent("system", "AUTO_BACKUP_FAILED", String(error) || "unknown_error");
+        AuditLogger.logSecurityEvent("system", "AUTO_BACKUP_FAILED", String(error));
       }
-    }, 30 * 60 * 1000); // 30 minutes
+    }, 30 * 60 * 1000);
 
-    // Create initial backup on mount
-    if (monthlyData && monthlyData.length > 0) {
-      try {
-        const backupData = { monthlyData } as Record<string, unknown>;
-        BackupManager.createBackup(backupData, "system", "Initial backup on app startup");
-        AuditLogger.logAction(
-          "system",
-          "INITIAL_BACKUP_CREATED",
-          "backup_management",
-          "success",
-          {
-            dataCount: monthlyData.length,
-          }
-        );
-      } catch (error) {
-        AuditLogger.logSecurityEvent("system", "INITIAL_BACKUP_FAILED", String(error) || "unknown_error");
-      }
-    }
-
-    // Cleanup: clear interval on unmount
     return () => clearInterval(autoBackupInterval);
   }, [monthlyData]);
 
   const renderContent = () => {
     switch (activeTab) {
       case "dashboard":
-        return <DashboardTab monthlyData={monthlyData} />;
+        return <DashboardTab />;
       case "workspace":
+        return <WorkspaceTab monthlyData={monthlyData} />;
+      case "masterplan":
         return (
-          <WorkspaceTab
+          <MasterPlanTab
             monthlyData={monthlyData}
-            compareData={compareData}
-            currentYear={selectedYear}
-            compareYear={compareYear ?? undefined}
-            onCompareYearChange={(year) => setCompareYear(year)}
-            availableYears={availableYears}
+            selectedYear={selectedYear}
+            previousYearData={
+              yearlyData[getPreviousEFY(selectedEFY)] || []
+            }
           />
         );
-      case "masterplan":
-        return <MasterPlanTab monthlyData={monthlyData} selectedYear={selectedYear} previousYearData={yearlyData[selectedYear - 1] || []} />;
       case "monthly":
-        return <MonthlyDataTab monthlyData={monthlyData} setMonthlyData={setMonthlyData} selectedYear={selectedYear} />;
+        return (
+          <MonthlyDataTab
+            monthlyData={monthlyData}
+            setMonthlyData={setMonthlyData}
+            selectedYear={selectedYear}
+          />
+        );
       case "import":
-        return <DHIS2ImportTab monthlyData={monthlyData} setMonthlyData={setMonthlyData} />;
+        return (
+          <DHIS2ImportTab
+            monthlyData={monthlyData}
+            setMonthlyData={setMonthlyData}
+          />
+        );
       case "distribution":
         return <DistributionTab monthlyData={monthlyData} />;
       case "backup":
-        return <BackupRecoveryTab monthlyData={monthlyData} setMonthlyData={setMonthlyData} />;
+        return (
+          <BackupRecoveryTab
+            monthlyData={monthlyData}
+            setMonthlyData={setMonthlyData}
+          />
+        );
       case "comparison":
         return (
           <div>
             <div className="mb-4">
               <label className="text-sm font-medium mr-2">Compare with:</label>
-              <Select value={compareYear ? String(compareYear) : ""} onValueChange={(v) => setCompareYear(v ? Number(v) : null)}>
-                <SelectTrigger className="w-[150px] inline-flex">
-                  <SelectValue placeholder="Select year" />
+              <Select
+                value={compareEFY ?? ""}
+                onValueChange={(v) => setCompareEFY(v || null)}
+              >
+                <SelectTrigger className="w-[180px] inline-flex">
+                  <SelectValue placeholder="Select EFY year" />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableYears.filter((y) => y !== selectedYear).map((y) => (
-                    <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-                  ))}
+                  {availableEFYYears
+                    .filter((y) => y !== selectedEFY)
+                    .map((y) => (
+                      <SelectItem key={y} value={y}>
+                        {formatEFYDisplay(y)}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
@@ -236,8 +258,6 @@ const Index = () => {
             />
           </div>
         );
-      case "performance":
-        return null;
       case "feedback":
         return <FeedbackTab monthlyData={monthlyData} />;
       case "about":
@@ -264,35 +284,49 @@ const Index = () => {
                       <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
                     </svg>
                   </div>
-                  <h1 className="text-xl font-bold tracking-tight text-white">Hospital M&E Platform</h1>
+                  <h1 className="text-xl font-bold tracking-tight text-white">
+                    Hospital M&E Platform
+                  </h1>
                 </div>
               </div>
+
               <div className="flex items-center gap-3">
-                <Select value={String(selectedYear)} onValueChange={(v) => handleYearChange(Number(v))}>
-                  <SelectTrigger className="w-[140px] bg-white/10 border-white/20 text-white hover:bg-white/15 transition-colors rounded-lg backdrop-blur-md">
+                {/* EFY Year Selector */}
+                <Select value={selectedEFY} onValueChange={handleEFYChange}>
+                  <SelectTrigger className="w-[160px] bg-white/10 border-white/20 text-white hover:bg-white/15 transition-colors rounded-lg backdrop-blur-md">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableYears.map((y) => (
-                      <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                    {availableEFYYears.map((y) => (
+                      <SelectItem key={y} value={y}>
+                        {formatEFYDisplay(y)}
+                      </SelectItem>
                     ))}
-                    <SelectItem value={String(currentCalendarYear + 1)}>
-                      + {currentCalendarYear + 1}
-                    </SelectItem>
                   </SelectContent>
                 </Select>
 
-                {(activeTab === "masterplan" || activeTab === "monthly" || activeTab === "workspace") && (
-                  <ExportButton monthlyData={monthlyData} type={activeTab === "masterplan" ? "masterplan" : "monthly"} />
+                {(activeTab === "masterplan" ||
+                  activeTab === "monthly" ||
+                  activeTab === "workspace") && (
+                  <ExportButton
+                    monthlyData={monthlyData}
+                    type={
+                      activeTab === "masterplan" ? "masterplan" : "monthly"
+                    }
+                  />
                 )}
 
-              <div className="hidden sm:flex items-center gap-2 text-sm text-white backdrop-blur-md bg-white/10 px-3 py-2 rounded-lg border border-white/10">
+                <div className="hidden sm:flex items-center gap-2 text-sm text-white backdrop-blur-md bg-white/10 px-3 py-2 rounded-lg border border-white/10">
                   <User className="h-4 w-4 text-white" />
-                  <span className="font-medium text-white">{profile?.display_name || user?.email}</span>
-                  <span className="text-xs text-white/70">({profile?.department})</span>
+                  <span className="font-medium text-white">
+                    {profile?.display_name || user?.email}
+                  </span>
+                  <span className="text-xs text-white/70">
+                    ({profile?.department})
+                  </span>
                 </div>
 
-                {/* Sync Status Indicator */}
+                {/* Sync Status */}
                 <div className="flex items-center gap-2">
                   {isOnline ? (
                     <div className="hidden sm:flex items-center gap-2 text-sm text-white backdrop-blur-md bg-green-500/20 px-3 py-2 rounded-lg border border-green-500/30">
@@ -307,18 +341,18 @@ const Index = () => {
                   )}
 
                   {pendingSyncCount > 0 && (
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={manualSync}
-                        disabled={isSyncing || !isOnline}
-                        className="text-xs gap-1 text-white bg-blue-500/20 border-blue-500/30 hover:bg-blue-500/30 hover:text-white"
-                      >
-                        <RefreshCw className={`h-3 w-3 text-white ${isSyncing ? 'animate-spin' : ''}`} />
-                        Sync ({pendingSyncCount})
-                      </Button>
-                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={manualSync}
+                      disabled={isSyncing || !isOnline}
+                      className="text-xs gap-1 text-white bg-blue-500/20 border-blue-500/30 hover:bg-blue-500/30 hover:text-white"
+                    >
+                      <RefreshCw
+                        className={`h-3 w-3 text-white ${isSyncing ? "animate-spin" : ""}`}
+                      />
+                      Sync ({pendingSyncCount})
+                    </Button>
                   )}
                 </div>
 
@@ -336,7 +370,18 @@ const Index = () => {
 
           {/* Content */}
           <main className="flex-1 p-6 overflow-auto bg-gradient-to-br from-background to-background/80">
-            {renderContent()}
+            {isLoadingData ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+                  <p className="text-sm text-muted-foreground">
+                    Loading {selectedEFY} data…
+                  </p>
+                </div>
+              </div>
+            ) : (
+              renderContent()
+            )}
           </main>
         </div>
       </div>
