@@ -75,28 +75,31 @@ const Index = () => {
   const loadYearData = useCallback(
     async (efyYear: string) => {
       try {
-        const indicatorSource = indicators.length
-          ? (indicators as any)
-          : mapToIndicators(await fetchHospitalPerformanceData());
-
-        // Fetch hospital performance data filtered by EFY year
         const perfData = await fetchHospitalPerformanceData({
           fiscal_year: efyYear,
         });
 
-        // Convert performance data to MonthlyEntry format
+        const indicatorSource = mapToIndicators(perfData as any);
+
+        // Convert performance data to MonthlyEntry format for this EFY year
         const entries: MonthlyEntry[] = perfData
           .filter((row) => row.metric_type === "Performance")
-          .map((row) => ({
-            code: row.indicator_name
+          .map((row) => {
+            const code = row.indicator_name
               .toUpperCase()
               .replace(/[^A-Z0-9]+/g, "_")
               .replace(/^_+|_+$/g, "")
-              .slice(0, 40),
-            month: "Annual",
-            actual: row.metric_value ?? 0,
-            remarks: row.remark ?? "",
-          }));
+              .slice(0, 40);
+            const match = indicatorSource.find((ind) => ind.code === code);
+            return {
+              code,
+              month: "Annual",
+              actual: row.metric_value ?? 0,
+              remarks: row.remark ?? "",
+              target: match?.target,
+              baseline: match?.baseline,
+            } as MonthlyEntry;
+          });
 
         setYearlyData((prev) => ({
           ...prev,

@@ -1,5 +1,6 @@
 import { Database } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
+import { normalizeEFYString } from "@/lib/ethiopianCalendar";
 
 // የዳታቤዙን ትክክለኛ የረድፍ ታይፕ እንወስዳለን
 export type HospitalPlanPerformance = Database["public"]["Tables"]["hospital_plan_and_performance"]["Row"];
@@ -171,7 +172,15 @@ export async function fetchHospitalPerformanceRows(filters?: {
 }): Promise<HospitalPlanPerformance[]> {
   let query = supabase.from<HospitalPlanPerformance>("hospital_plan_and_performance").select("*");
   if (filters?.category) query = query.eq("category", filters.category);
-  if (filters?.fiscal_year) query = query.eq("fiscal_year", filters.fiscal_year);
+  if (filters?.fiscal_year) {
+    const normalized = normalizeEFYString(filters.fiscal_year);
+    const yearKey = normalized.match(/(\d{4})/)?.[1];
+    if (yearKey) {
+      query = query.ilike("fiscal_year", `${yearKey}%`);
+    } else {
+      query = query.eq("fiscal_year", normalized);
+    }
+  }
   if (filters?.metric_type) query = query.eq("metric_type", filters.metric_type);
   const { data, error } = await query.order("fiscal_year", { ascending: false });
   if (error) {
