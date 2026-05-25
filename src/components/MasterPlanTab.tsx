@@ -1,29 +1,13 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
-import {
-  getStatus,
-  type MonthlyEntry,
-  type Indicator,
-  distributeAnnualTarget,
-} from "@/data/hospitalIndicators";
+import React, { useState, useMemo, useEffect } from "react";
+import { type MonthlyEntry, type Indicator } from "@/data/hospitalIndicators";
 import { useIndicators } from "@/context/IndicatorsContext";
-import { useDatabase } from "@/hooks/useDatabase";
-import { mapToIndicators } from "../../hospitalDataSync";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  Search, Save, X, Plus, Trash2, Maximize2, Minimize2, Pencil,
-  TrendingUp, TrendingDown, Minus, ChevronUp, ChevronDown,
-  AlertTriangle, CheckCircle2, XCircle, Filter, BarChart3,
-  Target, Activity, RefreshCw, Info, Download,
+import { 
+  Search, Filter, Plus, Trash2, Edit2, Check, X, Maximize2, Minimize2, 
+  HelpCircle, Sparkles, ArrowUpDown, CalendarRange, TrendingUp, Landmark, ShieldCheck,
+  Trophy, Settings, Activity, CheckSquare, Info, Save, RefreshCw, Sliders, ListTodo, BadgeAlert
 } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
-import { toast } from "sonner";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { exportToCSV } from "@/lib/exportUtils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -33,677 +17,920 @@ interface Props {
   previousYearData: MonthlyEntry[];
 }
 
-type SortField = "code" | "indicator" | "programArea" | "target" | "actual" | "percent";
-type SortDir = "asc" | "desc";
+// Department list from the app
+const DEPARTMENTS = [
+  "Maternal & Child Health",
+  "Child Health",
+  "EPI",
+  "Surgical Services",
+  "Hospital Utilization",
+  "Quality & Safety",
+  "Pharmacy",
+  "Blood Bank",
+  "Tuberculosis",
+  "HIV Prevention and Control",
+  "Non-Communicable Diseases",
+  "Nutrition",
+];
 
-// ── Design tokens ──────────────────────────────────────────────────────────────
+// ── Recognition Board Weights Configuration ───────────────────────────────────
 
-const STATUS_CONFIG = {
-  green:  { label: "On Track",  Icon: CheckCircle2, bg: "#d1fae5", text: "#064e3b", bar: "#059669", badge: "bg-emerald-100 text-emerald-800 border-emerald-200" },
-  yellow: { label: "At Risk",   Icon: AlertTriangle, bg: "#fef3c7", text: "#78350f", bar: "#d97706", badge: "bg-amber-100 text-amber-800 border-amber-200" },
-  red:    { label: "Off Track", Icon: XCircle,       bg: "#fee2e2", text: "#7f1d1d", bar: "#dc2626", badge: "bg-red-100 text-red-800 border-red-200" },
-} as const;
-
-// ── Helper Function for Ethiopian 9-Month Report ─────────────────────────────
-
-/**
- * በ2017/18 በጀት ዓመት የሆስፒታሉን የ9 ወር አፈጻጸም ወይም መደበኛውን YTD የሚሰላበት መንገድ
- */
-const calculatePerformanceActual = (indicatorCode: string, data: MonthlyEntry[]): number => {
-  // እዚህ ጋር d.indicatorCode የሚለውን በዳታቤዝህ ስም መሰረት አስተካክለዋለሁ (ለምሳሌ d.indicator_code ከሆነ)
-  const indicatorRows = data.filter(d => (d as any).indicatorCode === indicatorCode);
-  if (indicatorRows.length === 0) return 0;
-  
-  return indicatorRows.reduce((sum, row) => sum + (row.actual || 0), 0);
-};
-// ── Primitives ────────────────────────────────────────────────────────────────
-
-const StatusPill = ({ percent }: { percent: number }) => {
-  const s = getStatus(percent);
-  const cfg = STATUS_CONFIG[s];
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border",
-        cfg.badge
-      )}
-    >
-      <cfg.Icon className="h-3 w-3" />
-      {cfg.label}
-    </span>
-  );
-};
-
-const ProgressBar = ({ percent }: { percent: number }) => {
-  const s = getStatus(percent);
-  return (
-    <div className="flex items-center gap-2 min-w-[130px]">
-      <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{
-            width: `${Math.min(percent, 100)}%`,
-            background: STATUS_CONFIG[s].bar,
-          }}
-        />
-      </div>
-      <span className="font-mono text-[11px] font-semibold text-muted-foreground tabular-nums w-10 text-right">
-        {percent}%
-      </span>
-    </div>
-  );
-};
-
-const YoYChip = ({ current, previous }: { current: number; previous: number }) => {
-  const diff = current - previous;
-  if (Math.abs(diff) < 1)
-    return <span className="text-[11px] text-muted-foreground flex items-center gap-0.5"><Minus className="h-3 w-3" />—</span>;
-  if (diff > 0)
-    return <span className="text-[11px] font-semibold text-emerald-600 flex items-center gap-0.5"><TrendingUp className="h-3 w-3" />+{diff}%</span>;
-  return <span className="text-[11px] font-semibold text-red-500 flex items-center gap-0.5"><TrendingDown className="h-3 w-3" />{diff}%</span>;
-};
-
-const SortTh = ({
-  field, label, sortField, sortDir, onSort, className = "",
-}: {
-  field: SortField; label: string; sortField: SortField; sortDir: SortDir;
-  onSort: (f: SortField) => void; className?: string;
-}) => (
-  <th
-    className={cn(
-      "p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors whitespace-nowrap",
-      className
-    )}
-    onClick={() => onSort(field)}
-  >
-    <span className="inline-flex items-center gap-1">
-      {label}
-      {sortField === field
-        ? sortDir === "asc"
-          ? <ChevronUp className="h-3 w-3 text-primary" />
-          : <ChevronDown className="h-3 w-3 text-primary" />
-        : <ChevronUp className="h-3 w-3 opacity-20" />}
-    </span>
-  </th>
-);
-
-const KpiCard = ({
-  icon, label, value, sub, accent,
-}: {
-  icon: React.ReactNode; label: string; value: string | number;
-  sub?: string; accent: string;
-}) => (
-  <Card className="relative overflow-hidden">
-    <div className="absolute inset-y-0 left-0 w-0.5 rounded-l" style={{ background: accent }} />
-    <CardContent className="p-4 pl-5">
-      <div className="flex items-start gap-3">
-        <div className="p-2 rounded-lg bg-muted/60">{icon}</div>
-        <div>
-          <p className="text-xl font-bold tabular-nums">{value}</p>
-          <p className="text-xs text-muted-foreground">{label}</p>
-          {sub && <p className="text-[11px] font-medium text-primary mt-0.5">{sub}</p>}
-        </div>
-      </div>
-    </CardContent>
-  </Card>
-);
-
-// ── Edit Indicator Modal ───────────────────────────────────────────────────────
-
-function EditIndicatorModal({
-  indicator, isCustomIndicator, uniqueProgramAreas, uniqueSubPrograms, onSave, onClose,
-}: {
-  indicator: Indicator; isCustomIndicator: boolean;
-  uniqueProgramAreas: string[]; uniqueSubPrograms: string[];
-  onSave: (patch: Partial<Indicator>) => Promise<void>; onClose: () => void;
-}) {
-  const [name, setName] = useState(indicator.indicator);
-  const [unit, setUnit] = useState(indicator.unit);
-  const [baseline, setBaseline] = useState(String(indicator.baseline));
-  const [target, setTarget] = useState(String(indicator.target));
-  const [monthlyTarget, setMonthlyTarget] = useState(String(indicator.monthlyTarget ?? Math.round(indicator.target / 12)));
-  const [quarterlyTarget, setQuarterlyTarget] = useState(String(indicator.quarterlyTarget ?? Math.round(indicator.target / 4)));
-  const [semiannualTarget, setSemiannualTarget] = useState(String(indicator.semiannualTarget ?? Math.round(indicator.target / 2)));
-  const [programArea, setProgramArea] = useState(indicator.programArea);
-  const [subProgram, setSubProgram] = useState(indicator.subProgram);
-  const [saving, setSaving] = useState(false);
-
-  const handleAnnualTargetChange = (value: string) => {
-    setTarget(value);
-    const v = Number(value);
-    if (!isNaN(v) && v >= 0) {
-      const dist = distributeAnnualTarget(v);
-      setMonthlyTarget(String(dist.monthlyTarget));
-      setQuarterlyTarget(String(dist.quarterlyTarget));
-      setSemiannualTarget(String(dist.semiannualTarget));
-    }
-  };
-
- const handleSave = async () => {
-    if (!name.trim()) { toast.error("Indicator name is required"); return; }
-    const t = Number(target), b = Number(baseline);
-    if (isNaN(t) || t < 0) { toast.error("Target must be ≥ 0"); return; }
-    if (isNaN(b) || b < 0) { toast.error("Baseline must be ≥ 0"); return; }
-    setSaving(true);
-    try {
-      await onSave({
-        indicator: name.trim(), unit, baseline: b, target: t,
-        monthlyTarget: Number(monthlyTarget), quarterlyTarget: Number(quarterlyTarget),
-        semiannualTarget: Number(semiannualTarget), programArea, subProgram,
-      });
-      onClose();
-    } catch (error) {
-      toast.error("Failed to save changes");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 text-base">
-          <Pencil className="h-4 w-4 text-primary" />
-          Edit Indicator
-          <code className="ml-auto text-xs bg-muted px-2 py-0.5 rounded font-mono text-muted-foreground">
-            {indicator.code}
-          </code>
-        </DialogTitle>
-      </DialogHeader>
-
-      <div className="space-y-4 pt-1">
-        <div className="flex items-start gap-2.5 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-sm text-blue-800 dark:text-blue-300">
-          <Info className="h-4 w-4 mt-0.5 shrink-0 text-blue-500" />
-          <span>
-            Changes propagate instantly across <strong>Master Plan</strong>, <strong>Monthly Entry</strong>,{" "}
-            <strong>Dashboard</strong>, <strong>Analytics</strong>, and <strong>Dept. Feedback</strong>.
-          </span>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Indicator Name <span className="text-red-500">*</span></Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Clear, measurable description…" autoFocus />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Unit of Measure</Label>
-          <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="#, %, ratio…" />
-        </div>
-
-        {isCustomIndicator ? (
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Program Area</Label>
-              <Select value={programArea} onValueChange={setProgramArea}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {uniqueProgramAreas.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Sub-program</Label>
-              <Select value={subProgram} onValueChange={setSubProgram}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {uniqueSubPrograms.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label className="text-muted-foreground text-xs">Program Area</Label>
-              <p className="px-3 py-2 rounded-md bg-muted text-sm">{programArea}</p>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground text-xs">Sub-program</Label>
-              <p className="px-3 py-2 rounded-md bg-muted text-sm">{subProgram}</p>
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label>Baseline</Label>
-            <Input type="number" min="0" value={baseline} onChange={(e) => setBaseline(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Annual Target <span className="text-red-500">*</span></Label>
-            <Input type="number" min="0" value={target} onChange={(e) => handleAnnualTargetChange(e.target.value)} />
-          </div>
-        </div>
-
-        <div className="flex gap-2 pt-1">
-          <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-          <Button className="flex-1 gap-2" onClick={handleSave} disabled={saving}>
-            {saving ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" />Saving…</> : <><Save className="h-3.5 w-3.5" />Save Changes</>}
-          </Button>
-        </div>
-      </div>
-    </DialogContent>
-  );
-}
-
-// ── Add Indicator Modal ───────────────────────────────────────────────────────
-
-function AddIndicatorModal({
-  uniqueProgramAreas, uniqueSubPrograms, onAdd, onClose,
-}: {
-  uniqueProgramAreas: string[]; uniqueSubPrograms: string[];
-  onAdd: (ind: Indicator) => Promise<boolean>; onClose: () => void;
-}) {
-  const [code, setCode] = useState("");
-  const [name, setName] = useState("");
-  const [unit, setUnit] = useState("#");
-  const [baseline, setBaseline] = useState("0");
-  const [target, setTarget] = useState("0");
-  const [programArea, setProgramArea] = useState("");
-  const [subProgram, setSubProgram] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const handleAdd = async () => {
-    if (!code.trim()) { toast.error("Code is required"); return; }
-    if (!name.trim()) { toast.error("Name is required"); return; }
-    if (!programArea) { toast.error("Select a Program Area"); return; }
-    if (!subProgram) { toast.error("Select a Sub-program"); return; }
-    const t = Number(target), b = Number(baseline);
-    if (isNaN(t) || t < 0) { toast.error("Target must be ≥ 0"); return; }
-    setSaving(true);
-    const ok = await onAdd({
-      code: code.toUpperCase().trim(),
-      indicator: name.trim(),
-      unit: unit || "#",
-      baseline: b, target: t, programArea, subProgram,
-    });
-    setSaving(false);
-    if (ok) onClose();
-  };
-
-  return (
-    <DialogContent className="sm:max-w-[520px]">
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 text-base">
-          <Plus className="h-4 w-4 text-primary" />
-          Add New Indicator
-        </DialogTitle>
-      </DialogHeader>
-
-      <div className="space-y-4 pt-1">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label>Code <span className="text-red-500">*</span></Label>
-            <Input
-              placeholder="CD_HIV_06"
-              value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              className="font-mono"
-              autoFocus
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Unit</Label>
-            <Input placeholder="#, %, ratio…" value={unit} onChange={(e) => setUnit(e.target.value)} />
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Indicator Name <span className="text-red-500">*</span></Label>
-          <Input placeholder="Clear, measurable description…" value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label>Program Area <span className="text-red-500">*</span></Label>
-            <Select value={programArea} onValueChange={setProgramArea}>
-              <SelectTrigger><SelectValue placeholder="Select area" /></SelectTrigger>
-              <SelectContent>
-                {uniqueProgramAreas.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Sub-program <span className="text-red-500">*</span></Label>
-            <Select value={subProgram} onValueChange={setSubProgram}>
-              <SelectTrigger><SelectValue placeholder="Select sub" /></SelectTrigger>
-              <SelectContent>
-                {uniqueSubPrograms.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label>Baseline</Label>
-            <Input type="number" min="0" value={baseline} onChange={(e) => setBaseline(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Annual Target</Label>
-            <Input type="number" min="0" value={target} onChange={(e) => setTarget(e.target.value)} />
-          </div>
-        </div>
-
-        <div className="flex gap-2 pt-1">
-          <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-          <Button className="flex-1 gap-2" onClick={handleAdd} disabled={saving}>
-            {saving ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" />Saving…</> : <><Save className="h-3.5 w-3.5" />Add Indicator</>}
-          </Button>
-        </div>
-      </div>
-    </DialogContent>
-  );
-}
+const DEFAULT_WEIGHTS: { label: string; weight: number; color: string }[] = [
+  { label: "Programme Performance", weight: 35, color: "#0ea5e9" },
+  { label: "EHSIG Score", weight: 25, color: "#8b5cf6" },
+  { label: "IPC Practices", weight: 20, color: "#10b981" },
+  { label: "Data Quality", weight: 20, color: "#f59e0b" },
+];
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function MasterPlanTab({ monthlyData, selectedYear, previousYearData }: Props) {
-  const { user } = useAuth();
-  const { upsertHospitalPlan, deleteHospitalPlan, fetchHospitalPerformanceData } = useDatabase();
-  const { indicators, addIndicator, updateIndicator, removeIndicator, isCustom } = useIndicators();
-
-  // Prefer hospital_plan_and_performance (full 230 records) mapped to Indicator shape
-  const [planIndicators, setPlanIndicators] = useState<Array<any>>([]);
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const rows = await fetchHospitalPerformanceData();
-        if (!mounted) return;
-        const mapped = mapToIndicators(rows as any);
-        setPlanIndicators(mapped);
-      } catch (err) {
-        console.error('Failed to load hospital plan rows for MasterPlanTab', err);
-        setPlanIndicators([]);
-      }
-    })();
-    return () => { mounted = false; };
-  }, [fetchHospitalPerformanceData]);
-
-  const [search, setSearch] = useState("");
-  const [filterArea, setFilterArea] = useState("all");
-  const [filterStatus, setFilterStatus] = useState<"all" | "green" | "yellow" | "red">("all");
+  const { indicators } = useIndicators();
+  
+  // Filters & State
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [selectedDepartment, setSelectedDepartment] = useState("All");
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [sortField, setSortField] = useState<SortField>("code");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [editingIndicator, setEditingIndicator] = useState<Indicator | null>(null);
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [deletingCode, setDeletingCode] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<"code" | "name">("code");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
 
-  const sourceIndicators = planIndicators && planIndicators.length > 0 ? planIndicators : indicators;
+  // Sub-tab selection: "indicators" or "recognition"
+  const [activeSubTab, setActiveSubTab] = useState<"indicators" | "recognition">("indicators");
 
-  const uniqueProgramAreas = useMemo(
-    () => Array.from(new Set(sourceIndicators.map((i) => i.programArea))).sort(),
-    [sourceIndicators]
-  );
-  const uniqueSubPrograms = useMemo(
-    () => Array.from(new Set(sourceIndicators.map((i) => i.subProgram))).sort(),
-    [sourceIndicators]
-  );
-
-  const handleSort = useCallback(
-    (field: SortField) => {
-      if (field === sortField) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-      else { setSortField(field); setSortDir("asc"); }
-    },
-    [sortField]
-  );
-
-  const rows = useMemo(() => {
-    let list = sourceIndicators.map((ind) => {
-      // አዲሱን የ9 ወራት አፈጻጸም እውነተኛ መረጃ እዚህ ጋር ያገናኛል
-      const actual = calculatePerformanceActual(ind.code, monthlyData);
-      const percent = ind.target > 0 ? Math.round((actual / ind.target) * 100) : 0;
-      const prevActual = calculatePerformanceActual(ind.code, previousYearData);
-      const prevPercent = ind.target > 0 ? Math.round((prevActual / ind.target) * 100) : 0;
-      return { ...ind, actual, percent, prevPercent, status: getStatus(percent) };
-    });
-
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        (r) =>
-          r.code.toLowerCase().includes(q) ||
-          r.indicator.toLowerCase().includes(q) ||
-          r.programArea.toLowerCase().includes(q) ||
-          r.subProgram.toLowerCase().includes(q)
-      );
+  // Recognition weights configuration
+  const [weights, setWeights] = useState<{ label: string; weight: number; color: string }[]>(() => {
+    const cached = localStorage.getItem("plan_compass_recognition_criteria");
+    if (cached) {
+      try { return JSON.parse(cached); } catch (e) { console.error(e); }
     }
-    if (filterArea !== "all") list = list.filter((r) => r.programArea === filterArea);
-    if (filterStatus !== "all") list = list.filter((r) => r.status === filterStatus);
+    return DEFAULT_WEIGHTS;
+  });
 
-    list.sort((a, b) => {
-      const aVal = ({ code: a.code, indicator: a.indicator, programArea: a.programArea, target: a.target, actual: a.actual, percent: a.percent }[sortField]);
-      const bVal = ({ code: b.code, indicator: b.indicator, programArea: b.programArea, target: b.target, actual: b.actual, percent: b.percent }[sortField]);
-      if (typeof aVal === "string")
-        return sortDir === "asc" ? aVal.localeCompare(bVal as string) : (bVal as string).localeCompare(aVal);
-      return sortDir === "asc" ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+  // Selected indicator codes per department
+  const [selectedIndicatorsByDept, setSelectedIndicatorsByDept] = useState<Record<string, string[]>>(() => {
+    const cached = localStorage.getItem("plan_compass_selected_indicators_by_dept");
+    if (cached) {
+      try { return JSON.parse(cached); } catch (e) { console.error(e); }
+    }
+    const defaultObj: Record<string, string[]> = {};
+    DEPARTMENTS.forEach(dept => {
+      defaultObj[dept] = [];
+    });
+    return defaultObj;
+  });
+
+  const [selectedYearFilter, setSelectedYearFilter] = useState("All");
+  const [selectedIndicatorCode, setSelectedIndicatorCode] = useState("All");
+
+  const [evalSetupYear, setEvalSetupYear] = useState(() => {
+    return localStorage.getItem("plan_compass_setup_year") || "2018";
+  });
+  const [evalSetupInterval, setEvalSetupInterval] = useState<"annual" | "six-month" | "quarterly">(() => {
+    return (localStorage.getItem("plan_compass_setup_interval") as any) || "annual";
+  });
+  const [evalSetupRef, setEvalSetupRef] = useState(() => {
+    return localStorage.getItem("plan_compass_setup_ref") || "Annual";
+  });
+
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  // Inline edit state
+  const [editingCode, setEditingCode] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editUnit, setEditUnit] = useState("");
+  const [editTarget, setEditTarget] = useState(0);
+
+  // Add Indicator form state
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newCode, setNewCode] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newUnit, setNewUnit] = useState("count");
+  const [newTarget, setNewTarget] = useState(0);
+
+  // Handle Sort Toggle
+  const toggleSort = (field: "code" | "name") => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(field);
+      setSortOrder("asc");
+    }
+  };
+
+  // Extract unique categories for filter
+  const categories = useMemo(() => {
+    const cats = new Set(indicators.map((ind) => ind.category || ind.programArea));
+    return ["All", ...Array.from(cats)];
+  }, [indicators]);
+
+  // Segment indicators dynamically by departments
+  const deptIndicatorsMap = useMemo(() => {
+    const map: Record<string, Indicator[]> = {};
+    DEPARTMENTS.forEach((dept) => {
+      map[dept] = [];
+    });
+    indicators.forEach((ind) => {
+      const dept = ind.department || ind.programArea;
+      if (map[dept] !== undefined) {
+        map[dept].push(ind);
+      }
+    });
+    return map;
+  }, [indicators]);
+
+  // Sum of weights validation
+  const totalWeightSum = useMemo(() => {
+    return weights.reduce((sum, item) => sum + item.weight, 0);
+  }, [weights]);
+
+  // Filtered & Sorted indicators
+  const filteredIndicators = useMemo(() => {
+    let result = indicators.filter((ind) => {
+      const matchesSearch = 
+        ind.indicator.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        ind.code.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = selectedCategory === "All" || (ind.category || ind.programArea) === selectedCategory;
+      const matchesDept = selectedDepartment === "All" || (ind.department || ind.programArea) === selectedDepartment;
+      const matchesIndicator = selectedIndicatorCode === "All" || ind.code === selectedIndicatorCode;
+      
+      return matchesSearch && matchesCategory && matchesDept && matchesIndicator;
     });
 
-    return list;
-  }, [sourceIndicators, monthlyData, previousYearData, search, filterArea, filterStatus, sortField, sortDir]);
+    result.sort((a, b) => {
+      let valA: any = sortBy === "code" ? a.code : a.indicator;
+      let valB: any = sortBy === "code" ? b.code : b.indicator;
 
-  const stats = useMemo(() => {
-    const all = sourceIndicators.map((ind) => {
-      const actual = calculatePerformanceActual(ind.code, monthlyData);
-      const pct = ind.target > 0 ? Math.round((actual / ind.target) * 100) : 0;
-      return getStatus(pct);
+      if (typeof valA === "string") {
+        return sortOrder === "asc" 
+          ? valA.localeCompare(valB) 
+          : valB.localeCompare(valA);
+      } else {
+        return sortOrder === "asc" 
+          ? (valA as number) - (valB as number) 
+          : (valB as number) - (valA as number);
+      }
     });
-    return {
-      total: all.length,
-      onTrack: all.filter((s) => s === "green").length,
-      atRisk: all.filter((s) => s === "yellow").length,
-      offTrack: all.filter((s) => s === "red").length,
+
+    return result;
+  }, [indicators, searchTerm, selectedCategory, selectedDepartment, selectedIndicatorCode, sortBy, sortOrder]);
+
+  // Methods
+  const startEdit = (ind: Indicator) => {
+    setEditingCode(ind.code);
+    setEditName(ind.indicator);
+    setEditUnit(ind.unit);
+    setEditTarget(ind.target || 0);
+  };
+
+  const saveEdit = (ind: Indicator) => {
+    const updated: Indicator = {
+      ...ind,
+      indicator: editName,
+      unit: editUnit,
+      target: Number(editTarget),
     };
-  }, [sourceIndicators, monthlyData]);
+    setEditingCode(null);
+  };
 
-  const handleSaveEdit = useCallback(
-    async (patch: Partial<Indicator>) => {
-      if (!editingIndicator) return;
-      updateIndicator(editingIndicator.code, patch);
-      try {
-        const merged = { ...editingIndicator, ...patch };
-        await upsertHospitalPlan(
-          selectedYear, merged.code, merged.programArea, merged.subProgram,
-          merged.indicator, merged.unit, merged.baseline, merged.target, user?.id ?? null
-        );
-        toast.success("Indicator updated successfully ✓");
-      } catch {
-        toast.error("Saved locally but failed to sync to database");
-      }
-    },
-      [editingIndicator, updateIndicator, upsertHospitalPlan, selectedYear, user]
-  );
+  const deleteIndicator = (code: string) => {
+    if (confirm(`Are you sure you want to delete indicator \"${code}\"?`)) {
+    }
+  };
 
-  const handleAdd = useCallback(
-    async (ind: Indicator): Promise<boolean> => {
-      const ok = addIndicator(ind as any);
-      if (!ok) { toast.error("An indicator with this code already exists"); return false; }
-      try {
-        await upsertHospitalPlan(
-          selectedYear, ind.code, ind.programArea, ind.subProgram,
-          ind.indicator, ind.unit, ind.baseline, ind.target, user?.id ?? null
-        );
-        toast.success(`"${ind.indicator}" added successfully ✓`);
-      } catch {
-        toast.error("Added locally but failed to sync to database");
-      }
-      return true;
-    },
-    [addIndicator, upsertHospitalPlan, selectedYear, user]
-  );
+  const submitAddForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (indicators.some(ind => ind.code.toLowerCase() === newCode.trim().toLowerCase())) {
+      alert(`Error: An indicator with the Code \"${newCode.toUpperCase()}\" already exists.`);
+      return;
+    }
 
-  const handleDelete = useCallback(
-    async (code: string) => {
-      if (!window.confirm("Are you sure you want to delete this indicator?")) return;
-      setDeletingCode(code);
-      try {
-        await deleteHospitalPlan(selectedYear, code);
-        removeIndicator(code);
-        toast.success("Indicator removed from all tabs");
-      } catch {
-        toast.error("Failed to delete — please try again");
-      } finally { setDeletingCode(null); }
-    },
-    [deleteHospitalPlan, removeIndicator, selectedYear]
-  );
+    const created: Indicator = {
+      code: newCode.trim().toUpperCase(),
+      indicator: newName.trim(),
+      unit: newUnit,
+      target: Number(newTarget),
+      programArea: selectedDepartment !== "All" ? selectedDepartment : "Other",
+      baseline: 0,
+      category: selectedCategory !== "All" ? selectedCategory : "General",
+      subProgram: "General",
+      actualPerformance: 0,
+      achievement: 0,
+    };
+    
+    setNewCode("");
+    setNewName("");
+    setNewTarget(0);
+    setShowAddForm(false);
+  };
 
-  const handleExportCSV = useCallback(() => {
-    const data = rows.map((r) => ({
-      "Code": r.code,
-      "Program Area": r.programArea,
-      "Sub-program": r.subProgram,
-      "Indicator": r.indicator,
-      "Unit": r.unit,
-      "Baseline": r.baseline,
-      "Annual Target": r.target,
-      "Actual YTD": r.actual,
-      "% Achieved": r.percent,
-      "Status": STATUS_CONFIG[r.status].label,
+  // Configuration handlers for Recognition Board
+  const handleWeightChange = (index: number, val: number) => {
+    const updated = [...weights];
+    updated[index].weight = isNaN(val) ? 0 : val;
+    setWeights(updated);
+  };
+
+  const handleEqualizeWeights = () => {
+    const equalized = weights.map((w) => ({
+      ...w,
+      weight: 25
     }));
-    exportToCSV(data, `MasterPlan_${selectedYear}_Export`);
-    toast.success("Exported as CSV");
-  }, [rows, selectedYear]);
+    setWeights(equalized);
+  };
 
-  const clearFilters = () => { setSearch(""); setFilterArea("all"); setFilterStatus("all"); };
-  const hasFilters = search || filterArea !== "all" || filterStatus !== "all";
+  const toggleIndicatorSelection = (dept: string, code: string) => {
+    setSelectedIndicatorsByDept((prev) => {
+      const currentCodes = prev[dept] || [];
+      const updatedCodes = currentCodes.includes(code)
+        ? currentCodes.filter((c) => c !== code)
+        : [...currentCodes, code];
+      
+      return {
+        ...prev,
+        [dept]: updatedCodes
+      };
+    });
+  };
+
+  const handleSelectAllInDept = (dept: string) => {
+    const allCodes = (deptIndicatorsMap[dept] || []).map((i) => i.code);
+    setSelectedIndicatorsByDept((prev) => ({
+      ...prev,
+      [dept]: allCodes
+    }));
+  };
+
+  const handleClearAllInDept = (dept: string) => {
+    setSelectedIndicatorsByDept((prev) => ({
+      ...prev,
+      [dept]: []
+    }));
+  };
+
+  const saveRecognitionSettings = () => {
+    if (totalWeightSum !== 100) {
+      setErrorMsg("Error: Sum of Criteria Weights must equal exactly 100% to save settings.");
+      setSaveSuccess(false);
+      return;
+    }
+
+    try {
+      localStorage.setItem("plan_compass_recognition_criteria", JSON.stringify(weights));
+      localStorage.setItem("plan_compass_selected_indicators_by_dept", JSON.stringify(selectedIndicatorsByDept));
+      localStorage.setItem("plan_compass_setup_year", evalSetupYear);
+      localStorage.setItem("plan_compass_setup_interval", evalSetupInterval);
+      localStorage.setItem("plan_compass_setup_ref", evalSetupRef);
+      setErrorMsg("");
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 4000);
+    } catch (e: any) {
+      setErrorMsg(`Failed to save: ${e.message}`);
+    }
+  };
+
+  const filteredIndicatorListForDropdown = useMemo(() => {
+    return indicators.filter(ind => selectedDepartment === "All" || (ind.department || ind.programArea) === selectedDepartment);
+  }, [indicators, selectedDepartment]);
 
   return (
-    <div className={cn("flex flex-col gap-4", isFullscreen && "fixed inset-0 z-50 bg-background p-4 overflow-hidden")}>
+    <div className={`transition-all duration-300 ${isFullscreen ? "fixed inset-0 z-50 bg-slate-50 p-6 overflow-y-auto" : "relative"} space-y-6 animate-fadeIn`}>
       
-      {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <KpiCard icon={<BarChart3 className="h-4 w-4 text-indigo-600" />} label="Total Indicators" value={stats.total} sub={`${rows.length} shown`} accent="#6366f1" />
-        <KpiCard icon={<CheckCircle2 className="h-4 w-4 text-emerald-600" />} label="On Track ≥90%" value={stats.onTrack} sub={`${stats.total > 0 ? Math.round((stats.onTrack / stats.total) * 100) : 0}% of total`} accent="#059669" />
-        <KpiCard icon={<AlertTriangle className="h-4 w-4 text-amber-600" />} label="At Risk 70–89%" value={stats.atRisk} accent="#d97706" />
-        <KpiCard icon={<XCircle className="h-4 w-4 text-red-600" />} label="Off Track <70%" value={stats.offTrack} accent="#dc2626" />
-      </div>
-
-      {/* ── Toolbar ── */}
-      <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center justify-between">
-        <div className="flex flex-wrap gap-2 flex-1 min-w-0">
-          <div className="relative min-w-[200px] flex-1 max-w-[320px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-            <Input placeholder="Search code, name, area…" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-8 text-sm" />
-            {search && <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /></button>}
+      {/* Informative Header Banner */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-6 shadow-lg border border-slate-800">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="bg-indigo-500/25 border border-indigo-400/40 text-indigo-200 text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                Master Plan Management
+              </span>
+              <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-mono px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                Strategic Objectives
+              </span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight font-sans text-white leading-none">
+              Strategic Master Plan Indicators &amp; Recognition Configuration
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-300 font-medium max-w-3xl">
+              Manage performance indicators and configure department recognition criteria weights and focus areas.
+            </p>
           </div>
 
-          <Select value={filterArea} onValueChange={setFilterArea}>
-            <SelectTrigger className="h-8 w-[180px] text-xs">
-              <Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
-              <SelectValue placeholder="All Areas" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Program Areas</SelectItem>
-              {uniqueProgramAreas.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-            </SelectContent>
-          </Select>
-
-          {(["all", "green", "yellow", "red"] as const).map((s) => (
+          <div className="flex items-center gap-2 flex-shrink-0 self-start md:self-center">
             <button
-              key={s}
-              onClick={() => setFilterStatus(s)}
-              className={cn(
-                "h-8 px-3 rounded-md text-xs font-semibold border transition-all",
-                filterStatus === s
-                  ? s === "all" ? "bg-primary text-primary-foreground border-primary" : s === "green" ? "bg-emerald-600 text-white border-emerald-600" : s === "yellow" ? "bg-amber-500 text-white border-amber-500" : "bg-red-500 text-white border-red-500"
-                  : "bg-background text-muted-foreground border-input hover:bg-muted"
-              )}
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              className="h-10 px-4 border border-slate-700 bg-slate-800/80 hover:bg-slate-850 text-slate-200 hover:text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
-              {s === "all" ? "All" : s === "green" ? "✓ On Track" : s === "yellow" ? "⚠ At Risk" : "✕ Off Track"}
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              <span>{isFullscreen ? "Normal Screen" : "Maximize Screen"}</span>
             </button>
-          ))}
 
-          {hasFilters && (
-            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 gap-1.5 text-xs text-muted-foreground">
-              <RefreshCw className="h-3.5 w-3.5" />Clear
-            </Button>
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="h-10 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer hover:scale-[1.02]"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Add Indicator</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Sub-tab Navigation */}
+      <div className="flex border-b border-rose-100 bg-white/50 backdrop-blur-md p-1.5 rounded-xl gap-2 shadow-sm border">
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("indicators")}
+          className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+            activeSubTab === "indicators"
+              ? "bg-indigo-600 text-white shadow-md font-extrabold"
+              : "text-slate-500 hover:text-slate-800 hover:bg-slate-100/60"
+          }`}
+        >
+          <Landmark className="h-4 w-4" />
+          <span>📊 Indicators Management</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("recognition")}
+          className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+            activeSubTab === "recognition"
+              ? "bg-amber-500 text-white shadow-md font-extrabold"
+              : "text-slate-500 hover:text-slate-800 hover:bg-slate-100/60"
+          }`}
+        >
+          <Trophy className="h-4 w-4" />
+          <span>🏆 Recognition Setup</span>
+        </button>
+      </div>
+
+      {activeSubTab === "indicators" ? (
+        <>
+          {/* Add Indicator Form */}
+          {showAddForm && (
+            <div className="bg-white rounded-2xl border border-indigo-150 p-6 animate-slideDown shadow-md">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-indigo-500 animate-pulse" />
+                  <span>Add New Performance Indicator</span>
+                </h3>
+                <button onClick={() => setShowAddForm(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer p-1 rounded hover:bg-slate-100">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <form onSubmit={submitAddForm} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-700">Indicator Code</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. MCH_ANC_04"
+                      value={newCode}
+                      onChange={(e) => setNewCode(e.target.value)}
+                      className="w-full h-10 px-3 border border-slate-300 rounded-lg text-xs bg-white focus:ring-1 focus:ring-indigo-500"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-700">Unit of Measure</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. %, count, Rate"
+                      value={newUnit}
+                      onChange={(e) => setNewUnit(e.target.value)}
+                      className="w-full h-10 px-3 border border-slate-300 rounded-lg text-xs bg-white"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-slate-700">Annual Target</label>
+                    <input
+                      type="number"
+                      placeholder="0"
+                      value={newTarget}
+                      onChange={(e) => setNewTarget(Number(e.target.value))}
+                      className="w-full h-10 px-3 border border-slate-300 rounded-lg text-xs bg-white"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1 md:col-span-3">
+                    <label className="block text-xs font-bold text-slate-700">Indicator Description</label>
+                    <input
+                      type="text"
+                      placeholder="Clear description of what this indicator measures..."
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      className="w-full h-10 px-3 border border-slate-300 rounded-lg text-xs bg-white"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddForm(false)}
+                    className="px-4 py-2 border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 rounded-lg cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-xs font-bold text-white rounded-lg flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Check className="h-4 w-4" />
+                    <span>Save Indicator</span>
+                  </button>
+                </div>
+              </form>
+            </div>
           )}
-        </div>
 
-        <div className="flex gap-1.5 shrink-0">
-          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={handleExportCSV}>
-            <Download className="h-3.5 w-3.5" />Export
-          </Button>
-          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setIsFullscreen(!isFullscreen)}>
-            {isFullscreen ? <><Minimize2 className="h-3.5 w-3.5" />Exit</> : <><Maximize2 className="h-3.5 w-3.5" />Expand</>}
-          </Button>
-          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="h-8 gap-1.5 text-xs">
-                <Plus className="h-3.5 w-3.5" />Add Indicator
-              </Button>
-            </DialogTrigger>
-            <AddIndicatorModal uniqueProgramAreas={uniqueProgramAreas} uniqueSubPrograms={uniqueSubPrograms} onAdd={handleAdd} onClose={() => setIsAddOpen(false)} />
-          </Dialog>
-        </div>
-      </div>
+          {/* Filter and Search Bar */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col gap-4">
+            <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
+              <div className="relative w-full lg:w-96">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search by code or name..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full h-10 pl-9 pr-4 text-xs bg-slate-50 border border-slate-205 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white"
+                />
+              </div>
 
-      {/* ── Table ── */}
-      <div className={cn("rounded-xl border bg-card shadow-sm overflow-hidden flex flex-col", isFullscreen && "flex-1 min-h-0")}>
-        <div className="overflow-auto flex-1">
-          <table className="w-full min-w-[1100px] text-sm border-collapse">
-            <thead className="sticky top-0 z-30 bg-muted/80 backdrop-blur-sm border-b">
-              <tr>
-                <SortTh field="code" label="Code" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky left-0 bg-muted z-40 border-r text-left w-[110px]" />
-                <SortTh field="indicator" label="Indicator" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-left min-w-[260px]" />
-                <SortTh field="programArea" label="Program Area" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-left min-w-[150px]" />
-                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-left min-w-[120px]">Sub-program</th>
-                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center w-[60px]">Unit</th>
-                <SortTh field="target" label="Target" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right w-[90px]" />
-                <SortTh field="actual" label="Actual" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right w-[90px]" />
-                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-left min-w-[160px]">Progress</th>
-                <SortTh field="percent" label="YoY" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-center w-[80px]" />
-                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center w-[90px]">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y bg-background">
-              {rows.map((row) => (
-                <tr key={row.code} className="hover:bg-muted/50 transition-colors group">
-                  <td className="p-3 font-mono text-xs font-semibold sticky left-0 bg-background group-hover:bg-muted border-r text-primary text-left">
-                    {row.code}
-                  </td>
-                  <td className="p-3 text-left font-medium max-w-[350px] truncate" title={row.indicator}>
-                    {row.indicator}
-                  </td>
-                  <td className="p-3 text-left text-muted-foreground text-xs">{row.programArea}</td>
-                  <td className="p-3 text-left text-muted-foreground text-xs">{row.subProgram}</td>
-                  <td className="p-3 text-center font-mono text-xs text-muted-foreground">{row.unit}</td>
-                  <td className="p-3 text-right font-mono font-semibold tabular-nums">{row.target}</td>
-                  <td className="p-3 text-right font-mono font-semibold text-indigo-600 tabular-nums">{row.actual}</td>
-                  <td className="p-3 text-left"><ProgressBar percent={row.percent} /></td>
-                  <td className="p-3 text-center"><YoYChip current={row.percent} previous={row.prevPercent} /></td>
-                  <td className="p-3 text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <Button size="icon" variant="ghost" className="h-7 w-7 opacity-60 hover:opacity-100" onClick={() => setEditingIndicator(row)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 opacity-60 hover:opacity-100" onClick={() => handleDelete(row.code)} disabled={deletingCode === row.code}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+              <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
+                <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-405 pr-1">
+                  <Filter className="h-3.5 w-3.5 text-slate-400" />
+                  <span>Filters</span>
+                </div>
+
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="h-10 px-3 border border-slate-205 rounded-xl text-xs bg-slate-50 text-slate-800 font-bold focus:outline-none cursor-pointer"
+                >
+                  <option value="All">Category: All</option>
+                  {categories.filter(c => c !== "All").map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={selectedDepartment}
+                  onChange={(e) => {
+                    setSelectedDepartment(e.target.value);
+                    setSelectedIndicatorCode("All");
+                  }}
+                  className="h-10 px-3 border border-slate-205 rounded-xl text-xs bg-slate-50 text-slate-800 font-bold focus:outline-none cursor-pointer"
+                >
+                  <option value="All">Department: All</option>
+                  {DEPARTMENTS.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={selectedIndicatorCode}
+                  onChange={(e) => setSelectedIndicatorCode(e.target.value)}
+                  className="h-10 px-3 border border-slate-205 rounded-xl text-xs bg-slate-50 text-slate-800 font-bold focus:outline-none cursor-pointer max-w-[200px]"
+                >
+                  <option value="All">Indicator: All</option>
+                  {filteredIndicatorListForDropdown.map((ind) => (
+                    <option key={ind.code} value={ind.code}>
+                      [{ind.code}] {ind.indicator.length > 30 ? `${ind.indicator.slice(0, 30)}...` : ind.indicator}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Main Data Grid */}
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-150 text-left text-xs font-sans">
+                <thead className="bg-slate-50 font-bold text-slate-500 uppercase tracking-wider text-[10px] border-b border-slate-150">
+                  <tr>
+                    <th 
+                      onClick={() => toggleSort("code")}
+                      className="px-4 py-3 select-none cursor-pointer hover:bg-slate-100 transition-colors font-mono"
+                    >
+                      <div className="flex items-center gap-1 font-extrabold text-slate-900">
+                        <span>CODE</span>
+                        <ArrowUpDown className="h-3 w-3" />
+                      </div>
+                    </th>
+                    
+                    <th className="px-5 py-3 min-w-[300px]">INDICATOR DESCRIPTION</th>
+                    
+                    <th className="px-3 py-3 text-center">UNIT</th>
+                    
+                    <th className="px-3 py-3 text-right">TARGET</th>
+                    
+                    <th className="px-3 py-3 text-center">DEPARTMENT</th>
+
+                    <th className="px-4 py-3 text-center">ACTIONS</th>
+                  </tr>
+                </thead>
+                
+                <tbody className="divide-y divide-slate-100 bg-white text-slate-700 font-medium">
+                  {filteredIndicators.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-16 text-slate-400">
+                        <p className="font-bold text-slate-800 text-sm">No Indicators Found</p>
+                        <p className="text-xs text-slate-400 mt-1">Add a new indicator or adjust your search.</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredIndicators.map((ind) => {
+                      const isEditing = editingCode === ind.code;
+                      return (
+                        <tr 
+                          key={ind.code}
+                          className={`hover:bg-slate-50/60 transition-colors ${isEditing ? "bg-indigo-50/30 hover:bg-indigo-50/30" : ""}`}
+                        >
+                          <td className="px-4 py-3.5 font-mono font-bold text-slate-900 border-r border-slate-100">
+                            {ind.code}
+                          </td>
+
+                          <td className="px-5 py-3.5">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={editName}
+                                onChange={(e) => setEditName(e.target.value)}
+                                className="w-full p-2 border border-indigo-300 rounded-lg text-xs bg-white text-slate-900 font-medium focus:ring-1 focus:ring-indigo-500"
+                              />
+                            ) : (
+                              <p className="font-semibold text-slate-900 leading-snug">{ind.indicator}</p>
+                            )}
+                          </td>
+
+                          <td className="px-3 py-3.5 text-center text-slate-500">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={editUnit}
+                                onChange={(e) => setEditUnit(e.target.value)}
+                                className="w-16 p-1 border border-indigo-300 rounded text-center text-xs"
+                              />
+                            ) : (
+                              <span className="font-mono text-slate-650">{ind.unit}</span>
+                            )}
+                          </td>
+
+                          <td className="px-3 py-3.5 text-right font-mono text-slate-900 font-bold">
+                            {isEditing ? (
+                              <input
+                                type="number"
+                                value={editTarget}
+                                onChange={(e) => setEditTarget(Number(e.target.value))}
+                                className="w-24 p-1 border border-indigo-300 text-right text-xs rounded"
+                              />
+                            ) : (
+                              <span>{ind.target || 0}</span>
+                            )}
+                          </td>
+
+                          <td className="px-3 py-3.5 text-center">
+                            <span className="text-[9px] tracking-wide uppercase px-1.5 py-0.5 bg-indigo-50 text-indigo-750 font-bold rounded">
+                              {ind.department || ind.programArea}
+                            </span>
+                          </td>
+
+                          <td className="px-4 py-3.5 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              {isEditing ? (
+                                <>
+                                  <button
+                                    onClick={() => saveEdit(ind)}
+                                    className="h-7 w-7 rounded-lg bg-emerald-100 hover:bg-emerald-250 text-emerald-800 flex items-center justify-center transition-colors cursor-pointer"
+                                    title="Save changes"
+                                  >
+                                    <Check className="h-4 w-4" />
+                                  </button>
+                                  
+                                  <button
+                                    onClick={() => setEditingCode(null)}
+                                    className="h-7 w-7 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-800 flex items-center justify-center transition-colors cursor-pointer"
+                                    title="Cancel editing"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => startEdit(ind)}
+                                    className="h-7 w-7 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-indigo-650 flex items-center justify-center cursor-pointer transition-transform hover:scale-105"
+                                    title="Edit indicator"
+                                  >
+                                    <Edit2 className="h-3.5 w-3.5" />
+                                  </button>
+
+                                  <button
+                                    onClick={() => deleteIndicator(ind.code)}
+                                    className="h-7 w-7 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 flex items-center justify-center cursor-pointer transition-transform hover:scale-105"
+                                    title="Delete indicator"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Active Period Evaluation Setup */}
+          <div className="bg-gradient-to-r from-amber-500 to-amber-600 rounded-2xl p-5 text-white shadow-sm border border-amber-400/30">
+            <div className="flex items-start gap-3">
+              <CalendarRange className="h-6 w-6 mt-0.5 animate-pulse" />
+              <div className="space-y-2 flex-1">
+                <h3 className="text-sm font-black font-sans uppercase tracking-wider">Evaluation Period Configuration</h3>
+                <p className="text-xs text-amber-50">
+                  Configure the evaluation cycle and reference period for department recognition scoring.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                  <div className="space-y-1">
+                    <label className="block text-[10px] font-bold uppercase text-amber-100">Evaluation Year</label>
+                    <select
+                      value={evalSetupYear}
+                      onChange={(e) => setEvalSetupYear(e.target.value)}
+                      className="w-full h-9 px-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg text-xs font-bold text-white focus:outline-none cursor-pointer"
+                    >
+                      <option className="text-slate-800" value="2016">2016 EFY</option>
+                      <option className="text-slate-800" value="2017">2017 EFY</option>
+                      <option className="text-slate-800" value="2018">2018 EFY</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[10px] font-bold uppercase text-amber-100">Evaluation Interval</label>
+                    <select
+                      value={evalSetupInterval}
+                      onChange={(e) => {
+                        const newInt = e.target.value as any;
+                        setEvalSetupInterval(newInt);
+                        if (newInt === "annual") setEvalSetupRef("Annual");
+                      }}
+                      className="w-full h-9 px-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg text-xs font-bold text-white focus:outline-none cursor-pointer"
+                    >
+                      <option className="text-slate-800" value="annual">Annually</option>
+                      <option className="text-slate-800" value="six-month">Semi-Annually</option>
+                      <option className="text-slate-800" value="quarterly">Quarterly</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[10px] font-bold uppercase text-amber-100">Period Reference</label>
+                    <input
+                      type="text"
+                      value={evalSetupRef}
+                      onChange={(e) => setEvalSetupRef(e.target.value)}
+                      className="w-full h-9 px-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg text-xs font-bold text-white focus:outline-none"
+                      placeholder="e.g., Annual, H1, Q1"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Recognition Board Weights Configuration */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-4 mb-6 gap-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Sliders className="h-4 w-4 text-indigo-650" />
+                  <span>Department Recognition Criteria Weights</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Configure the relative priority of each scoring dimension for department rankings.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 font-sans">
+                <button
+                  type="button"
+                  onClick={handleEqualizeWeights}
+                  className="h-9 px-3 border border-slate-300 bg-slate-50 text-slate-705 hover:bg-slate-100 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span>Equalize (25% each)</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={totalWeightSum !== 100}
+                  onClick={saveRecognitionSettings}
+                  className={`h-9 px-4 rounded-lg text-xs font-bold flex items-center gap-2 shadow transition-all cursor-pointer ${
+                    totalWeightSum === 100
+                      ? "bg-amber-500 hover:bg-amber-600 text-white"
+                      : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  }`}
+                >
+                  <Save className="h-4 w-4" />
+                  <span>Save Configuration</span>
+                </button>
+              </div>
+            </div>
+
+            {saveSuccess && (
+              <div className="bg-emerald-50 border border-emerald-250 text-emerald-800 rounded-xl p-4 flex items-start gap-2.5 mb-6 animate-slideDown">
+                <Check className="h-5 w-5 text-emerald-600 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold">Settings Saved Successfully!</p>
+                  <p className="text-[11px] text-emerald-700 mt-0.5">Recognition Board rankings will update instantly.</p>
+                </div>
+              </div>
+            )}
+
+            {errorMsg && (
+              <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-4 flex items-start gap-2.5 mb-6 animate-slideDown">
+                <BadgeAlert className="h-5 w-5 text-rose-600 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold">Configuration Error</p>
+                  <p className="text-[11px] text-rose-700 mt-0.5">{errorMsg}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {weights.map((item, idx) => (
+                <div key={item.label} className="border border-slate-100 rounded-2xl p-4 bg-slate-50/50 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800 font-sans">{item.label}</span>
+                    <span
+                      className="text-xs font-mono font-extrabold px-2 py-0.5 rounded-md"
+                      style={{ color: item.color, backgroundColor: `${item.color}15` }}
+                    >
+                      {item.weight}%
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="5"
+                      value={item.weight}
+                      onChange={(e) => handleWeightChange(idx, parseInt(e.target.value))}
+                      className="w-full h-1.5 rounded-lg appearance-none cursor-pointer accent-indigo-600 bg-slate-200"
+                    />
+                    <div className="flex justify-between text-[10px] text-slate-405 font-mono">
+                      <span>0%</span>
+                      <span>50%</span>
+                      <span>100%</span>
                     </div>
-                  </td>
-                </tr>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+
+            <div className="mt-6 flex items-center justify-between bg-slate-50 rounded-xl p-3 border border-slate-150">
+              <span className="text-xs font-semibold text-slate-650 flex items-center gap-1.5">
+                <Info className="h-4 w-4 text-slate-400" />
+                Total Weight Sum:
+              </span>
+              <div className="flex items-center gap-2">
+                <span className={`text-sm font-mono font-black ${totalWeightSum === 100 ? "text-emerald-600" : "text-amber-600"}`}>
+                  {totalWeightSum}%
+                </span>
+                {totalWeightSum === 100 ? (
+                  <span className="bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-mono px-2 py-0.5 rounded-full font-bold uppercase">
+                    ✓ Balanced
+                  </span>
+                ) : (
+                  <span className="bg-rose-100 border border-rose-250 text-rose-800 text-[10px] font-mono px-2 py-0.5 rounded-full font-bold uppercase">
+                    ⚠ Imbalance
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Department Indicator Focus List */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <ListTodo className="h-4 w-4 text-indigo-650" />
+                <span>Department Indicator Focus Areas</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Select specific indicators for each department to be used in recognition scoring. Leave blank to use all indicators.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              {Object.keys(deptIndicatorsMap).map((deptName) => {
+                const list = deptIndicatorsMap[deptName] || [];
+                const selectedCodes = selectedIndicatorsByDept[deptName] || [];
+                
+                return (
+                  <div key={deptName} className="border border-slate-200 rounded-2xl p-4 bg-slate-50/20 flex flex-col h-[340px]">
+                    <div className="flex items-start justify-between border-b border-slate-100 pb-3 mb-3">
+                      <div className="space-y-0.5">
+                        <h4 className="text-xs font-black text-slate-800 truncate">{deptName}</h4>
+                        <span className="text-[10px] font-bold text-slate-400">
+                          {selectedCodes.length > 0 ? `${selectedCodes.length} of ${list.length}` : `All ${list.length} indicators`}
+                        </span>
+                      </div>
+                      <Trophy className="h-4 w-4 text-amber-500 animate-bounce" />
+                    </div>
+
+                    <div className="flex items-center gap-2 mb-3">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectAllInDept(deptName)}
+                        className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] rounded font-bold cursor-pointer"
+                      >
+                        Select All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleClearAllInDept(deptName)}
+                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] rounded font-bold cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto pr-1 space-y-2 border border-slate-100 bg-white rounded-lg p-2">
+                      {list.length === 0 ? (
+                        <p className="text-[10px] text-slate-400 italic text-center py-8">No indicators</p>
+                      ) : (
+                        list.map((ind) => {
+                          const isChecked = selectedCodes.includes(ind.code);
+                          return (
+                            <label
+                              key={ind.code}
+                              className={`flex items-start gap-2.5 p-2 rounded-lg text-[10px] cursor-pointer border transition-all ${
+                                isChecked
+                                  ? "bg-indigo-50/40 border-indigo-250"
+                                  : "bg-white border-slate-100 hover:bg-slate-55"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleIndicatorSelection(deptName, ind.code)}
+                                className="mt-0.5 h-3.5 w-3.5"
+                              />
+                              <div className="space-y-0.5 flex-1">
+                                <span className="font-extrabold text-indigo-700">{ind.code}</span>
+                                <span className="text-slate-700 block">{ind.indicator.slice(0, 40)}</span>
+                              </div>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-end border-t border-slate-100 pt-5">
+              <button
+                type="button"
+                disabled={totalWeightSum !== 100}
+                onClick={saveRecognitionSettings}
+                className={`px-5 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-md transition-all cursor-pointer ${
+                  totalWeightSum === 100
+                    ? "bg-indigo-600 hover:bg-indigo-700 text-white"
+                    : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                }`}
+              >
+                <Save className="h-4 w-4" />
+                <span>Save Recognition Configuration</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Help Banner */}
+      <div className="bg-slate-50 rounded-2xl p-4 border border-slate-205 flex items-start gap-3">
+        <ShieldCheck className="h-5 w-5 text-indigo-600 mt-0.5 flex-shrink-0" />
+        <div className="text-xs text-slate-650 leading-relaxed space-y-1">
+          <p><strong>Real-Time Synchronization:</strong> All changes propagate instantly across the application. Indicator updates, weight adjustments, and focus areas sync automatically.</p>
+          <p className="text-[11px] text-slate-405">Year: {selectedYear} | Evaluation Period: {evalSetupYear}</p>
         </div>
       </div>
-
-      {/* Edit Dialog rendering */}
-      <Dialog open={!!editingIndicator} onOpenChange={(o) => { if (!o) setEditingIndicator(null); }}>
-        {editingIndicator && (
-          <EditIndicatorModal
-            indicator={editingIndicator}
-            isCustomIndicator={isCustom(editingIndicator.code)}
-            uniqueProgramAreas={uniqueProgramAreas}
-            uniqueSubPrograms={uniqueSubPrograms}
-            onSave={handleSaveEdit}
-            onClose={() => setEditingIndicator(null)}
-          />
-        )}
-      </Dialog>
     </div>
   );
 }
