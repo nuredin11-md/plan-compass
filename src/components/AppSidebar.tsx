@@ -7,7 +7,7 @@ import {
   TrendingUp,
   GitCompareArrows,
   MessageSquareText,
-  
+  Sparkles,
   Share2,
   Zap,
   HardDrive,
@@ -33,6 +33,7 @@ const navItems = [
   { id: "monthly", label: "Monthly Entry", icon: CalendarDays, color: "text-amber-500" },
   { id: "import", label: "DHIS2 Import", icon: Upload, color: "text-green-500" },
   { id: "distribution", label: "Distribution", icon: Share2, color: "text-pink-500" },
+  { id: "aianalysis", label: "AI Analysis", icon: Sparkles, color: "text-indigo-500" },
   { id: "backup", label: "Backup & Recovery", icon: HardDrive, color: "text-red-500" },
   { id: "comparison", label: "YoY Compare", icon: GitCompareArrows, color: "text-indigo-500" },
   { id: "feedback", label: "Dept. Feedback", icon: MessageSquareText, color: "text-orange-500" },

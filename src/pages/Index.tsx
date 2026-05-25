@@ -18,6 +18,7 @@ import YearComparisonTab from "@/components/YearComparisonTab";
 import ExportButton from "@/components/ExportButton";
 import AboutUsTab from "@/components/AboutUsTab";
 import WorkspaceTab from "@/components/WorkspaceTab";
+import Aianalysistab from "@/components/Aianalysistab";
 import { BackupManager } from "@/lib/backupUtils";
 import { AuditLogger } from "@/lib/securityUtils";
 import { mergeMonthlyData, convertMonthlyDataToEntries } from "@/lib/databaseSync";
@@ -223,6 +224,13 @@ const Index = () => {
         );
       case "distribution":
         return <DistributionTab monthlyData={monthlyData} />;
+      case "aianalysis":
+        return (
+          <Aianalysistab
+            indicators={indicators}
+            monthlyData={monthlyData}
+          />
+        );
       case "backup":
         return (
           <BackupRecoveryTab

@@ -1,29 +1,13 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
-import {
-  getStatus,
-  type MonthlyEntry,
-  type Indicator,
-  distributeAnnualTarget,
-} from "@/data/hospitalIndicators";
+import React, { useState, useMemo, useEffect } from "react";
+import { type MonthlyEntry, type Indicator } from "@/data/hospitalIndicators";
 import { useIndicators } from "@/context/IndicatorsContext";
-import { useDatabase } from "@/hooks/useDatabase";
-import { mapToIndicators } from "../../hospitalDataSync";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  Search, Save, X, Plus, Trash2, Maximize2, Minimize2, Pencil,
-  TrendingUp, TrendingDown, Minus, ChevronUp, ChevronDown,
-  AlertTriangle, CheckCircle2, XCircle, Filter, BarChart3,
-  Target, Activity, RefreshCw, Info, Download,
+import { 
+  Search, Filter, Plus, Trash2, Edit2, Check, X, Maximize2, Minimize2, 
+  HelpCircle, Sparkles, ArrowUpDown, CalendarRange, TrendingUp, Landmark, ShieldCheck,
+  Trophy, Settings, Activity, CheckSquare, Info, Save, RefreshCw, Sliders, ListTodo, BadgeAlert
 } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
-import { toast } from "sonner";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { exportToCSV } from "@/lib/exportUtils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -33,403 +17,97 @@ interface Props {
   previousYearData: MonthlyEntry[];
 }
 
-type SortField = "code" | "indicator" | "programArea" | "target" | "actual" | "percent";
-type SortDir = "asc" | "desc";
+// Department list from the app
+const DEPARTMENTS = [
+  "Maternal & Child Health",
+  "Child Health",
+  "EPI",
+  "Surgical Services",
+  "Hospital Utilization",
+  "Quality & Safety",
+  "Pharmacy",
+  "Blood Bank",
+  "Tuberculosis",
+  "HIV Prevention and Control",
+  "Non-Communicable Diseases",
+  "Nutrition",
+];
 
-// ── Design tokens ──────────────────────────────────────────────────────────────
+// ── Recognition Board Weights Configuration ───────────────────────────────────
 
-const STATUS_CONFIG = {
-  green:  { label: "On Track",  Icon: CheckCircle2, bg: "#d1fae5", text: "#064e3b", bar: "#059669", badge: "bg-emerald-100 text-emerald-800 border-emerald-200" },
-  yellow: { label: "At Risk",   Icon: AlertTriangle, bg: "#fef3c7", text: "#78350f", bar: "#d97706", badge: "bg-amber-100 text-amber-800 border-amber-200" },
-  red:    { label: "Off Track", Icon: XCircle,       bg: "#fee2e2", text: "#7f1d1d", bar: "#dc2626", badge: "bg-red-100 text-red-800 border-red-200" },
-} as const;
-
-// ── Helper Function for Ethiopian 9-Month Report ─────────────────────────────
-
-/**
- * በ2017/18 በጀት ዓመት የሆስፒታሉን የ9 ወር አፈጻጸም ወይም መደበኛውን YTD የሚሰላበት መንገድ
- */
-const calculatePerformanceActual = (indicatorCode: string, data: MonthlyEntry[]): number => {
-  // እዚህ ጋር d.indicatorCode የሚለውን በዳታቤዝህ ስም መሰረት አስተካክለዋለሁ (ለምሳሌ d.indicator_code ከሆነ)
-  const indicatorRows = data.filter(d => (d as any).indicatorCode === indicatorCode);
-  if (indicatorRows.length === 0) return 0;
-  
-  return indicatorRows.reduce((sum, row) => sum + (row.actual || 0), 0);
-};
-// ── Primitives ────────────────────────────────────────────────────────────────
-
-const StatusPill = ({ percent }: { percent: number }) => {
-  const s = getStatus(percent);
-  const cfg = STATUS_CONFIG[s];
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border",
-        cfg.badge
-      )}
-    >
-      <cfg.Icon className="h-3 w-3" />
-      {cfg.label}
-    </span>
-  );
-};
-
-const ProgressBar = ({ percent }: { percent: number }) => {
-  const s = getStatus(percent);
-  return (
-    <div className="flex items-center gap-2 min-w-[130px]">
-      <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{
-            width: `${Math.min(percent, 100)}%`,
-            background: STATUS_CONFIG[s].bar,
-          }}
-        />
-      </div>
-      <span className="font-mono text-[11px] font-semibold text-muted-foreground tabular-nums w-10 text-right">
-        {percent}%
-      </span>
-    </div>
-  );
-};
-
-const YoYChip = ({ current, previous }: { current: number; previous: number }) => {
-  const diff = current - previous;
-  if (Math.abs(diff) < 1)
-    return <span className="text-[11px] text-muted-foreground flex items-center gap-0.5"><Minus className="h-3 w-3" />—</span>;
-  if (diff > 0)
-    return <span className="text-[11px] font-semibold text-emerald-600 flex items-center gap-0.5"><TrendingUp className="h-3 w-3" />+{diff}%</span>;
-  return <span className="text-[11px] font-semibold text-red-500 flex items-center gap-0.5"><TrendingDown className="h-3 w-3" />{diff}%</span>;
-};
-
-const SortTh = ({
-  field, label, sortField, sortDir, onSort, className = "",
-}: {
-  field: SortField; label: string; sortField: SortField; sortDir: SortDir;
-  onSort: (f: SortField) => void; className?: string;
-}) => (
-  <th
-    className={cn(
-      "p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors whitespace-nowrap",
-      className
-    )}
-    onClick={() => onSort(field)}
-  >
-    <span className="inline-flex items-center gap-1">
-      {label}
-      {sortField === field
-        ? sortDir === "asc"
-          ? <ChevronUp className="h-3 w-3 text-primary" />
-          : <ChevronDown className="h-3 w-3 text-primary" />
-        : <ChevronUp className="h-3 w-3 opacity-20" />}
-    </span>
-  </th>
-);
-
-const KpiCard = ({
-  icon, label, value, sub, accent,
-}: {
-  icon: React.ReactNode; label: string; value: string | number;
-  sub?: string; accent: string;
-}) => (
-  <Card className="relative overflow-hidden">
-    <div className="absolute inset-y-0 left-0 w-0.5 rounded-l" style={{ background: accent }} />
-    <CardContent className="p-4 pl-5">
-      <div className="flex items-start gap-3">
-        <div className="p-2 rounded-lg bg-muted/60">{icon}</div>
-        <div>
-          <p className="text-xl font-bold tabular-nums">{value}</p>
-          <p className="text-xs text-muted-foreground">{label}</p>
-          {sub && <p className="text-[11px] font-medium text-primary mt-0.5">{sub}</p>}
-        </div>
-      </div>
-    </CardContent>
-  </Card>
-);
-
-// ── Edit Indicator Modal ───────────────────────────────────────────────────────
-
-function EditIndicatorModal({
-  indicator, isCustomIndicator, uniqueProgramAreas, uniqueSubPrograms, onSave, onClose,
-}: {
-  indicator: Indicator; isCustomIndicator: boolean;
-  uniqueProgramAreas: string[]; uniqueSubPrograms: string[];
-  onSave: (patch: Partial<Indicator>) => Promise<void>; onClose: () => void;
-}) {
-  const [name, setName] = useState(indicator.indicator);
-  const [unit, setUnit] = useState(indicator.unit);
-  const [baseline, setBaseline] = useState(String(indicator.baseline));
-  const [target, setTarget] = useState(String(indicator.target));
-  const [monthlyTarget, setMonthlyTarget] = useState(String(indicator.monthlyTarget ?? Math.round(indicator.target / 12)));
-  const [quarterlyTarget, setQuarterlyTarget] = useState(String(indicator.quarterlyTarget ?? Math.round(indicator.target / 4)));
-  const [semiannualTarget, setSemiannualTarget] = useState(String(indicator.semiannualTarget ?? Math.round(indicator.target / 2)));
-  const [programArea, setProgramArea] = useState(indicator.programArea);
-  const [subProgram, setSubProgram] = useState(indicator.subProgram);
-  const [saving, setSaving] = useState(false);
-
-  const handleAnnualTargetChange = (value: string) => {
-    setTarget(value);
-    const v = Number(value);
-    if (!isNaN(v) && v >= 0) {
-      const dist = distributeAnnualTarget(v);
-      setMonthlyTarget(String(dist.monthlyTarget));
-      setQuarterlyTarget(String(dist.quarterlyTarget));
-      setSemiannualTarget(String(dist.semiannualTarget));
-    }
-  };
-
- const handleSave = async () => {
-    if (!name.trim()) { toast.error("Indicator name is required"); return; }
-    const t = Number(target), b = Number(baseline);
-    if (isNaN(t) || t < 0) { toast.error("Target must be ≥ 0"); return; }
-    if (isNaN(b) || b < 0) { toast.error("Baseline must be ≥ 0"); return; }
-    setSaving(true);
-    try {
-      await onSave({
-        indicator: name.trim(), unit, baseline: b, target: t,
-        monthlyTarget: Number(monthlyTarget), quarterlyTarget: Number(quarterlyTarget),
-        semiannualTarget: Number(semiannualTarget), programArea, subProgram,
-      });
-      onClose();
-    } catch (error) {
-      toast.error("Failed to save changes");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 text-base">
-          <Pencil className="h-4 w-4 text-primary" />
-          Edit Indicator
-          <code className="ml-auto text-xs bg-muted px-2 py-0.5 rounded font-mono text-muted-foreground">
-            {indicator.code}
-          </code>
-        </DialogTitle>
-      </DialogHeader>
-
-      <div className="space-y-4 pt-1">
-        <div className="flex items-start gap-2.5 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-sm text-blue-800 dark:text-blue-300">
-          <Info className="h-4 w-4 mt-0.5 shrink-0 text-blue-500" />
-          <span>
-            Changes propagate instantly across <strong>Master Plan</strong>, <strong>Monthly Entry</strong>,{" "}
-            <strong>Dashboard</strong>, <strong>Analytics</strong>, and <strong>Dept. Feedback</strong>.
-          </span>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Indicator Name <span className="text-red-500">*</span></Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Clear, measurable description…" autoFocus />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Unit of Measure</Label>
-          <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="#, %, ratio…" />
-        </div>
-
-        {isCustomIndicator ? (
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Program Area</Label>
-              <Select value={programArea} onValueChange={setProgramArea}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {uniqueProgramAreas.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Sub-program</Label>
-              <Select value={subProgram} onValueChange={setSubProgram}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {uniqueSubPrograms.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label className="text-muted-foreground text-xs">Program Area</Label>
-              <p className="px-3 py-2 rounded-md bg-muted text-sm">{programArea}</p>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground text-xs">Sub-program</Label>
-              <p className="px-3 py-2 rounded-md bg-muted text-sm">{subProgram}</p>
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label>Baseline</Label>
-            <Input type="number" min="0" value={baseline} onChange={(e) => setBaseline(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Annual Target <span className="text-red-500">*</span></Label>
-            <Input type="number" min="0" value={target} onChange={(e) => handleAnnualTargetChange(e.target.value)} />
-          </div>
-        </div>
-
-        <div className="flex gap-2 pt-1">
-          <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-          <Button className="flex-1 gap-2" onClick={handleSave} disabled={saving}>
-            {saving ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" />Saving…</> : <><Save className="h-3.5 w-3.5" />Save Changes</>}
-          </Button>
-        </div>
-      </div>
-    </DialogContent>
-  );
-}
-
-// ── Add Indicator Modal ───────────────────────────────────────────────────────
-
-function AddIndicatorModal({
-  uniqueProgramAreas, uniqueSubPrograms, onAdd, onClose,
-}: {
-  uniqueProgramAreas: string[]; uniqueSubPrograms: string[];
-  onAdd: (ind: Indicator) => Promise<boolean>; onClose: () => void;
-}) {
-  const [code, setCode] = useState("");
-  const [name, setName] = useState("");
-  const [unit, setUnit] = useState("#");
-  const [baseline, setBaseline] = useState("0");
-  const [target, setTarget] = useState("0");
-  const [programArea, setProgramArea] = useState("");
-  const [subProgram, setSubProgram] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const handleAdd = async () => {
-    if (!code.trim()) { toast.error("Code is required"); return; }
-    if (!name.trim()) { toast.error("Name is required"); return; }
-    if (!programArea) { toast.error("Select a Program Area"); return; }
-    if (!subProgram) { toast.error("Select a Sub-program"); return; }
-    const t = Number(target), b = Number(baseline);
-    if (isNaN(t) || t < 0) { toast.error("Target must be ≥ 0"); return; }
-    setSaving(true);
-    const ok = await onAdd({
-      code: code.toUpperCase().trim(),
-      indicator: name.trim(),
-      unit: unit || "#",
-      baseline: b, target: t, programArea, subProgram,
-    });
-    setSaving(false);
-    if (ok) onClose();
-  };
-
-  return (
-    <DialogContent className="sm:max-w-[520px]">
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 text-base">
-          <Plus className="h-4 w-4 text-primary" />
-          Add New Indicator
-        </DialogTitle>
-      </DialogHeader>
-
-      <div className="space-y-4 pt-1">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label>Code <span className="text-red-500">*</span></Label>
-            <Input
-              placeholder="CD_HIV_06"
-              value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              className="font-mono"
-              autoFocus
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Unit</Label>
-            <Input placeholder="#, %, ratio…" value={unit} onChange={(e) => setUnit(e.target.value)} />
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Indicator Name <span className="text-red-500">*</span></Label>
-          <Input placeholder="Clear, measurable description…" value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label>Program Area <span className="text-red-500">*</span></Label>
-            <Select value={programArea} onValueChange={setProgramArea}>
-              <SelectTrigger><SelectValue placeholder="Select area" /></SelectTrigger>
-              <SelectContent>
-                {uniqueProgramAreas.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Sub-program <span className="text-red-500">*</span></Label>
-            <Select value={subProgram} onValueChange={setSubProgram}>
-              <SelectTrigger><SelectValue placeholder="Select sub" /></SelectTrigger>
-              <SelectContent>
-                {uniqueSubPrograms.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label>Baseline</Label>
-            <Input type="number" min="0" value={baseline} onChange={(e) => setBaseline(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Annual Target</Label>
-            <Input type="number" min="0" value={target} onChange={(e) => setTarget(e.target.value)} />
-          </div>
-        </div>
-
-        <div className="flex gap-2 pt-1">
-          <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-          <Button className="flex-1 gap-2" onClick={handleAdd} disabled={saving}>
-            {saving ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" />Saving…</> : <><Save className="h-3.5 w-3.5" />Add Indicator</>}
-          </Button>
-        </div>
-      </div>
-    </DialogContent>
-  );
-}
+const DEFAULT_WEIGHTS: { label: string; weight: number; color: string }[] = [
+  { label: "Programme Performance", weight: 35, color: "#0ea5e9" },
+  { label: "EHSIG Score", weight: 25, color: "#8b5cf6" },
+  { label: "IPC Practices", weight: 20, color: "#10b981" },
+  { label: "Data Quality", weight: 20, color: "#f59e0b" },
+];
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function MasterPlanTab({ monthlyData, selectedYear, previousYearData }: Props) {
-  const { user } = useAuth();
-  const { upsertHospitalPlan, deleteHospitalPlan, fetchHospitalPerformanceData } = useDatabase();
-  const { indicators, addIndicator, updateIndicator, removeIndicator, isCustom } = useIndicators();
-
-  // Prefer hospital_plan_and_performance (full 230 records) mapped to Indicator shape
-  const [planIndicators, setPlanIndicators] = useState<Array<any>>([]);
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const rows = await fetchHospitalPerformanceData();
-        if (!mounted) return;
-        const mapped = mapToIndicators(rows as any);
-        setPlanIndicators(mapped);
-      } catch (err) {
-        console.error('Failed to load hospital plan rows for MasterPlanTab', err);
-        setPlanIndicators([]);
-      }
-    })();
-    return () => { mounted = false; };
-  }, [fetchHospitalPerformanceData]);
-
-  const [search, setSearch] = useState("");
-  const [filterArea, setFilterArea] = useState("all");
-  const [filterStatus, setFilterStatus] = useState<"all" | "green" | "yellow" | "red">("all");
+  const { indicators } = useIndicators();
+  
+  // Filters & State
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [selectedDepartment, setSelectedDepartment] = useState("All");
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [sortField, setSortField] = useState<SortField>("code");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [editingIndicator, setEditingIndicator] = useState<Indicator | null>(null);
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [deletingCode, setDeletingCode] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<"code" | "name">("code");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+
+  // Sub-tab selection: "indicators" or "recognition"
+  const [activeSubTab, setActiveSubTab] = useState<"indicators" | "recognition">("indicators");
+
+  // Recognition weights configuration
+  const [weights, setWeights] = useState<{ label: string; weight: number; color: string }[]>(() => {
+    const cached = localStorage.getItem("plan_compass_recognition_criteria");
+    if (cached) {
+      try { return JSON.parse(cached); } catch (e) { console.error(e); }
+    }
+    return DEFAULT_WEIGHTS;
+  });
+
+  // Selected indicator codes per department
+  const [selectedIndicatorsByDept, setSelectedIndicatorsByDept] = useState<Record<string, string[]>>(() => {
+    const cached = localStorage.getItem("plan_compass_selected_indicators_by_dept");
+    if (cached) {
+      try { return JSON.parse(cached); } catch (e) { console.error(e); }
+    }
+    const defaultObj: Record<string, string[]> = {};
+    DEPARTMENTS.forEach(dept => {
+      defaultObj[dept] = [];
+    });
+    return defaultObj;
+  });
+
+  const [selectedYearFilter, setSelectedYearFilter] = useState("All");
+  const [selectedIndicatorCode, setSelectedIndicatorCode] = useState("All");
+
+  const [evalSetupYear, setEvalSetupYear] = useState(() => {
+    return localStorage.getItem("plan_compass_setup_year") || "2018";
+  });
+  const [evalSetupInterval, setEvalSetupInterval] = useState<"annual" | "six-month" | "quarterly">(() => {
+    return (localStorage.getItem("plan_compass_setup_interval") as any) || "annual";
+  });
+  const [evalSetupRef, setEvalSetupRef] = useState(() => {
+    return localStorage.getItem("plan_compass_setup_ref") || "Annual";
+  });
+
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  // Inline edit state
+  const [editingCode, setEditingCode] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editUnit, setEditUnit] = useState("");
+  const [editTarget, setEditTarget] = useState(0);
+
+  // Add Indicator form state
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newCode, setNewCode] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newUnit, setNewUnit] = useState("count");
+  const [newTarget, setNewTarget] = useState(0);
 
   const sourceIndicators = planIndicators && planIndicators.length > 0 ? planIndicators : indicators;
 
