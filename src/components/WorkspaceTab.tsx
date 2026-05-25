@@ -1114,7 +1114,7 @@ export default function WorkspaceTab({ monthlyData }: Props) {
  
         {/* ── RECOGNITION ── */}
         <TabsContent value="recognition" className="mt-4">
-          <RecognitionBoard monthlyData={monthlyData} />
+          <RecognitionBoard indicators={sourceIndicators} monthlyData={monthlyData} />
         </TabsContent>
       </Tabs>
  

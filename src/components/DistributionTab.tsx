@@ -1,25 +1,37 @@
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Send, MessageCircle, Check, Share2, AlertCircle } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { 
+  Share2, Printer, CheckCircle, FileText, Globe, Send, Mail, Cloud, 
+  ShieldCheck, MessageCircle, Check, AlertCircle, Loader2, LogOut
+} from "lucide-react";
 import { type MonthlyEntry, getActualYTD, getStatus } from "@/data/hospitalIndicators";
 import { useIndicators } from "@/context/IndicatorsContext";
-import { toast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
 import { SecureStorage, InputValidator } from "@/lib/securityUtils";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 
 interface Props {
   monthlyData: MonthlyEntry[];
 }
 
 export default function DistributionTab({ monthlyData }: Props) {
+  const { profile } = useAuth();
   const { indicators } = useIndicators();
+  
+  // Original messaging states
   const [telegramConnected, setTelegramConnected] = useState(false);
   const [whatsappConnected, setWhatsappConnected] = useState(false);
   const [telegramBotToken, setTelegramBotToken] = useState("");
   const [telegramChatId, setTelegramChatId] = useState("");
   const [whatsappPhoneNumber, setWhatsappPhoneNumber] = useState("");
+  
+  // Strategic distribution states
+  const [stampStatus, setStampStatus] = useState<boolean>(true);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [emailInput, setEmailInput] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
   // Load saved credentials on component mount
@@ -43,17 +55,17 @@ export default function DistributionTab({ monthlyData }: Props) {
   const connectTelegram = () => {
     // Validate inputs
     if (!telegramBotToken || !telegramChatId) {
-      toast({ title: "Error", description: "Please enter Bot Token and Chat ID", variant: "destructive" });
+      toast.error("Please enter Bot Token and Chat ID");
       return;
     }
 
     if (!InputValidator.isValidTelegramChatId(telegramChatId)) {
-      toast({ title: "Error", description: "Invalid Chat ID. Must be a numeric ID (e.g., 123456789 or -1001234567890)", variant: "destructive" });
+      toast.error("Invalid Chat ID", { description: "Must be a numeric ID (e.g., 123456789 or -1001234567890)" });
       return;
     }
 
     if (!InputValidator.isValidTelegramBotToken(telegramBotToken)) {
-      toast({ title: "Error", description: "Invalid Bot Token format", variant: "destructive" });
+      toast.error("Invalid Bot Token format");
       return;
     }
 
@@ -65,18 +77,18 @@ export default function DistributionTab({ monthlyData }: Props) {
 
       setTelegramConnected(true);
       setLoading(false);
-      toast({ title: "Connected", description: "Telegram account connected securely" });
+      toast.success("Telegram connected securely");
     }, 1000);
   };
 
   const connectWhatsapp = () => {
     if (!whatsappPhoneNumber) {
-      toast({ title: "Error", description: "Please enter phone number", variant: "destructive" });
+      toast.error("Please enter phone number");
       return;
     }
 
     if (!InputValidator.isValidPhoneNumber(whatsappPhoneNumber)) {
-      toast({ title: "Error", description: "Invalid phone number format", variant: "destructive" });
+      toast.error("Invalid phone number format");
       return;
     }
 
@@ -87,7 +99,7 @@ export default function DistributionTab({ monthlyData }: Props) {
 
       setWhatsappConnected(true);
       setLoading(false);
-      toast({ title: "Connected", description: "WhatsApp account connected securely" });
+      toast.success("WhatsApp connected securely");
     }, 1000);
   };
 
@@ -112,7 +124,7 @@ export default function DistributionTab({ monthlyData }: Props) {
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      toast({ title: "Shared", description: "KPI report shared to Telegram successfully" });
+      toast.success("KPI report shared to Telegram");
     }, 1000);
   };
 
@@ -122,7 +134,7 @@ export default function DistributionTab({ monthlyData }: Props) {
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      toast({ title: "Shared", description: "KPI report shared to WhatsApp successfully" });
+      toast.success("KPI report shared to WhatsApp");
     }, 1000);
   };
 
@@ -231,7 +243,7 @@ export default function DistributionTab({ monthlyData }: Props) {
                     setTelegramConnected(false);
                     setTelegramBotToken("");
                     setTelegramChatId("");
-                    toast({ title: "Disconnected", description: "Telegram credentials removed securely" });
+                    toast.success("Telegram credentials removed");
                   }}
                   variant="ghost"
                   className="w-full text-xs"
@@ -299,7 +311,7 @@ export default function DistributionTab({ monthlyData }: Props) {
                     SecureStorage.removeSecureItem("whatsapp_phone_number");
                     setWhatsappConnected(false);
                     setWhatsappPhoneNumber("");
-                    toast({ title: "Disconnected", description: "WhatsApp credentials removed securely" });
+                    toast.success("WhatsApp credentials removed");
                   }}
                   variant="ghost"
                   className="w-full text-xs"
