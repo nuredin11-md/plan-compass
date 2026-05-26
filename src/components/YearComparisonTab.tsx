@@ -1,11 +1,14 @@
 import { useState, useMemo } from "react";
 import { getStatus, getActualYTD, MONTHS, type MonthlyEntry } from "@/data/hospitalIndicators";
 import { useIndicators } from "@/context/IndicatorsContext";
+import { cn } from "@/lib/utils";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
   LineChart, Line,
 } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
+import { Target, Activity, Calendar } from "lucide-react";
 
 interface Props {
   monthlyData: MonthlyEntry[];
@@ -101,7 +104,13 @@ export default function YearComparisonTab({ monthlyData, compareData, currentYea
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-3 items-center">
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+        <div className="space-y-1">
+          <h2 className="text-lg font-bold tracking-tight text-slate-900">Year-over-Year Performance Analysis</h2>
+          <p className="text-xs text-muted-foreground">
+            Comparative intelligence: <strong className="text-indigo-600">{currentYear}</strong> vs <strong className="text-slate-400">{compareYear}</strong>
+          </p>
+        </div>
         <Select value={selectedArea} onValueChange={setSelectedArea}>
           <SelectTrigger className="w-full sm:w-[280px]">
             <SelectValue placeholder="All Program Areas" />
@@ -111,9 +120,48 @@ export default function YearComparisonTab({ monthlyData, compareData, currentYea
             {areas.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
           </SelectContent>
         </Select>
-        <span className="text-sm text-muted-foreground">
-          Comparing <strong>{currentYear}</strong> vs <strong>{compareYear}</strong>
-        </span>
+      </div>
+
+      {/* ── 3-Phase Strategic Timeline ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[
+          { 
+            phase: "Stabilization (Q1-Q2)", 
+            label: "EFY Start & Alignment", 
+            desc: "Focus on baseline normalization and regional target setting.",
+            color: "text-blue-600", bg: "bg-blue-50", icon: Target
+          },
+          { 
+            phase: "Acceleration (Q2-Q3)", 
+            label: "Mid-Term Execution", 
+            desc: "Scaling high-impact service interventions across departments.",
+            color: "text-amber-600", bg: "bg-amber-50", icon: Activity
+          },
+          { 
+            phase: "Convergence (Q4)", 
+            label: "Strategic Realization", 
+            desc: "Closing the gap between annual targets and aggregate YTD actuals.",
+            color: "text-emerald-600", bg: "bg-emerald-50", icon: Calendar
+          },
+        ].map((p, i) => (
+          <Card key={i} className="border-none shadow-none bg-slate-50/50">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{p.phase}</span>
+                <p.icon className={cn("h-4 w-4", p.color)} />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">{p.label}</h4>
+                <p className="text-[11px] text-slate-500 leading-relaxed mt-1">{p.desc}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className={cn("px-2 py-0.5 rounded text-[10px] font-bold uppercase", p.bg, p.color)}>
+                  {i === 0 ? "Verified" : i === 1 ? "Active Monitoring" : "Forecasted"}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

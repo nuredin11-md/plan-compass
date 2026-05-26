@@ -407,6 +407,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
 
   // ── Recognition Setup States ───────────────────────────────────────────────
   const [activeSubTab, setActiveSubTab] = useState<"indicators" | "recognition">("indicators");
+  const [deptSearchTerm, setDeptSearchTerm] = useState("");
 
   const [weights, setWeights] = useState<{ label: string; weight: number; color: string }[]>(() => {
     const cached = localStorage.getItem("plan_compass_recognition_criteria");
@@ -654,6 +655,22 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
     setSelectedIndicatorsByDept((prev) => ({ ...prev, [dept]: [] }));
   };
 
+  const handleGlobalSelectAll = () => {
+    const newState: Record<string, string[]> = {};
+    uniqueProgramAreas.forEach((dept) => {
+      newState[dept] = (deptIndicatorsMap[dept] || []).map((i) => i.code);
+    });
+    setSelectedIndicatorsByDept(newState);
+    toast.success("Applied 'Select All' to all departments");
+  };
+
+  const handleSelectVisibleDepts = () => {
+    const next = { ...selectedIndicatorsByDept };
+    filteredDepts.forEach(dept => { next[dept] = (deptIndicatorsMap[dept] || []).map(i => i.code); });
+    setSelectedIndicatorsByDept(next);
+    toast.success(`Selected all indicators for ${filteredDepts.length} departments`);
+  };
+
   const saveRecognitionSettings = () => {
     if (totalWeightSum !== 100) {
       setErrorMsg("Error: Sum of Criteria Weights must equal exactly 100% to save settings.");
@@ -700,7 +717,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
       </div>
 
       {activeSubTab === "indicators" ? (
-      <>
+      <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <KpiCard icon={<BarChart3 className="h-4 w-4 text-indigo-600" />} label="Total Indicators" value={stats.total} sub={`${rows.length} shown`} accent="#6366f1" />
         <KpiCard icon={<CheckCircle2 className="h-4 w-4 text-emerald-600" />} label="On Track ≥90%" value={stats.onTrack} sub={`${stats.total > 0 ? Math.round((stats.onTrack / stats.total) * 100) : 0}% of total`} accent="#059669" />
@@ -828,7 +845,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
           </table>
         </div>
       </div>
-      </>
+      </div>
       ) : (
         <div className="space-y-6">
           {/* Evaluation Schedule Section */}
@@ -922,12 +939,42 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
 
           {/* Department Focus Section */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
-            <div className="space-y-1">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2"><ListTodo className="h-4 w-4 text-indigo-650" /> Indicator Focus List</h3>
-              <p className="text-xs text-slate-500">Choose specific indicators to weigh for each department's performance.</p>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2"><ListTodo className="h-4 w-4 text-indigo-650" /> Indicator Focus List</h3>
+                <p className="text-xs text-slate-500">Choose specific indicators to weigh for each department's performance.</p>
+              </div>
+              
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
+                  <Input 
+                    placeholder="Filter program areas..." 
+                    value={deptSearchTerm}
+                    onChange={(e) => setDeptSearchTerm(e.target.value)}
+                    className="h-8 pl-8 text-[11px] w-[180px] bg-slate-50 border-slate-200"
+                  />
+                </div>
+                <Button variant="outline" size="sm" className="h-8 gap-1.5 text-[10px] font-bold uppercase" onClick={handleGlobalSelectAll}>
+                  <CheckCircle2 className="h-3.5 w-3.5" /> All
+                </Button>
+                <Button variant="outline" size="sm" className="h-8 gap-1.5 text-[10px] font-bold uppercase" onClick={() => setSelectedIndicatorsByDept({})}>
+                  <RefreshIcon className="h-3.5 w-3.5" /> Clear
+                </Button>
+              </div>
             </div>
+
+            {deptSearchTerm && (
+              <div className="bg-indigo-50/50 border border-indigo-100 p-3 rounded-xl flex items-center justify-between animate-in fade-in slide-in-from-top-1">
+                <span className="text-[11px] font-bold text-indigo-700">Showing {filteredDepts.length} of {uniqueProgramAreas.length} matching program areas</span>
+                <Button variant="link" size="sm" className="h-auto p-0 text-[10px] uppercase font-bold text-indigo-700" onClick={handleSelectVisibleDepts}>
+                  Bulk Select Indicators in Visible Areas
+                </Button>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-              {uniqueProgramAreas.map((deptName) => {
+              {filteredDepts.map((deptName) => {
                 const list = deptIndicatorsMap[deptName] || [];
                 const selectedCodes = selectedIndicatorsByDept[deptName] || [];
                 return (

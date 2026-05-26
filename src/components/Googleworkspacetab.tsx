@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import type { MonthlyEntry } from "@/data/hospitalIndicators";
+import { type MonthlyEntry, getActualYTD } from "@/data/hospitalIndicators";
 import { useIndicators } from "@/context/IndicatorsContext";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -340,21 +340,42 @@ export default function GoogleWorkspaceTab({ monthlyData }: Props) {
     setSlidesUrl(null);
     setSlidesError(null);
     try {
+      // Deriving performance insights for the presentation
+      const performanceData = indicators.map(ind => ({
+        ...ind,
+        percent: ind.target > 0 ? Math.round((getActualYTD(ind.code, monthlyData) / ind.target) * 100) : 0
+      }));
+
+      const topAchievements = performanceData
+        .filter(p => p.percent >= 90)
+        .slice(0, 5)
+        .map(p => `${p.indicator}: ${p.percent}% achievement realized against EFY target.`);
+
+      const criticalThreats = performanceData
+        .filter(p => p.percent < 70)
+        .slice(0, 5)
+        .map(p => `${p.indicator}: Currently at ${p.percent}%. Urgent corrective action required.`);
+
       const slidesData = [
         {
-          title: "Hospital M&E Strategic Performance Review",
-          bulletPoints: [`Facility: ${facilityName}`, `Total Indicators: ${indicators.length}`, "EFY 2018-2019 Strategic Review"],
+          title: `Strategic M&E Review - ${facilityName}`,
+          bulletPoints: [`Review Cycle: EFY 2018/19`, `Metric Universe: ${indicators.length} clinical indicators`, `Authority: ${profile?.department || "Hospital Administration"}`],
         },
         {
-          title: "Key Program Areas",
-          bulletPoints: [...new Set(indicators.map((i) => i.programArea))].slice(0, 8),
+          title: "Top Performance Achievements",
+          bulletPoints: topAchievements.length > 0 ? topAchievements : ["No indicators currently meeting the 90% threshold."],
         },
         {
-          title: "Recommended Next Steps",
+          title: "Critical Performance Threats & Service Gaps",
+          bulletPoints: criticalThreats.length > 0 ? criticalThreats : ["No critical service delivery gaps identified in this cycle."],
+        },
+        {
+          title: "Strategic Resolution Roadmap",
           bulletPoints: [
-            "1. Set up bi-weekly evaluation reviews for underperforming indicators.",
-            "2. Ensure DHIS2 data sync is current and complete.",
-            "3. Coordinate with regional focal persons on resource allocation.",
+            "1. Initiate root cause analysis for all critical gap indicators.",
+            "2. Optimize staffing allocation based on high-achievement areas.",
+            "3. Standardize DHIS2 reporting frequency to 15-day cycles.",
+            "4. Coordinate technical assistance request to regional focal points.",
           ],
         },
       ];
@@ -541,8 +562,8 @@ export default function GoogleWorkspaceTab({ monthlyData }: Props) {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="border border-slate-200 rounded-xl p-5 space-y-4">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Deck Structure (3 slides)</h4>
-                    {["Title & Facility Overview", "Key Program Areas", "Recommended Next Steps"].map((s, i) => (
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Deck Structure (4 slides)</h4>
+                    {["Executive Summary", "Key Performance Achievements", "Critical Threats & Gaps", "Strategic Roadmap"].map((s, i) => (
                       <div key={i} className="flex items-center gap-3 bg-slate-50 p-2.5 rounded-lg border border-slate-100 text-xs">
                         <span className="font-mono bg-amber-100 text-amber-800 h-5 w-5 rounded flex items-center justify-center font-bold shrink-0">{i + 1}</span>
                         <span className="font-semibold text-slate-800">{s}</span>

@@ -1,13 +1,13 @@
 import { useState, useMemo, useEffect } from "react";
 import {
-  Trophy, Medal, Star, Award, TrendingUp, TrendingDown, Minus,
+  Trophy, Medal, Star, Award, TrendingUp, TrendingDown, Minus, Target,
   CheckCircle2, Settings2, ChevronRight, BarChart3, CalendarDays,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { getActualYTD, MONTHS } from "@/data/hospitalIndicators";
 import type { Indicator, MonthlyEntry } from "@/data/hospitalIndicators";
-import { getActualYTD } from "@/data/hospitalIndicators";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -39,7 +39,7 @@ const DEFAULT_WEIGHTS: WeightCriteria[] = [
   { label: "Programme Performance", weight: 35, color: "#0ea5e9" },
   { label: "EHSIG Score", weight: 25, color: "#8b5cf6" },
   { label: "IPC Practices", weight: 20, color: "#10b981" },
-  { label: "Data Quality", weight: 20, color: "#f59e0b" },
+  { label: "Data Quality & Reporting", weight: 20, color: "#f59e0b" },
 ];
 
 const MEDAL_CONFIG = {
@@ -246,40 +246,172 @@ export default function RecognitionBoard({
   const [weights, setWeights] = useState<WeightCriteria[]>(DEFAULT_WEIGHTS);
   const [expandedPodium, setExpandedPodium] = useState<number | null>(null);
   const [viewTab, setViewTab] = useState("podium");
-  const [selectedEFY] = useState("2018 EFY");
 
-  // Load saved weights from localStorage
+  // Selection Filters for Appraisal Periods
+  const [selectedYear, setSelectedYear] = useState("2018");
+  const [selectedInterval, setSelectedInterval] = useState<"annual" | "six-month" | "quarterly">("annual");
+  const [selectedPeriodRef, setSelectedPeriodRef] = useState("Annual");
+  // Reactive sync with Master Plan appraisal settings
+  const [selectedEFY, setSelectedEFY] = useState(() => localStorage.getItem("plan_compass_setup_year") || "2018");
+  const [interval, setInterval] = useState(() => localStorage.getItem("plan_compass_setup_interval") || "annual");
+  const [subBlock, setSubBlock] = useState(() => localStorage.getItem("plan_compass_setup_ref") || "Annual");
+  const [selectedIndicatorsByDept, setSelectedIndicatorsByDept] = useState<Record<string, string[]>>(() => {
+    const cached = localStorage.getItem("plan_compass_selected_indicators_by_dept");
+    if (cached) {
+      try { return JSON.parse(cached); } catch (e) { console.error(e); }
+    }
+    return {};
+  });
+
+  // Load configurations and listen for cross-tab updates
   useEffect(() => {
     const cached = localStorage.getItem("plan_compass_recognition_criteria");
     if (cached) {
       try { setWeights(JSON.parse(cached)); } catch {}
     }
+
+    const handleStorageChange = () => {
+      setSelectedEFY(localStorage.getItem("plan_compass_setup_year") || "2018");
+      setInterval(localStorage.getItem("plan_compass_setup_interval") || "annual");
+      setSubBlock(localStorage.getItem("plan_compass_setup_ref") || "Annual");
+      const cachedIndicators = localStorage.getItem("plan_compass_selected_indicators_by_dept");
+      if (cachedIndicators) {
+        try { setSelectedIndicatorsByDept(JSON.parse(cachedIndicators)); } catch (e) { console.error(e); }
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
   }, []);
 
   // Dynamically compute dept scores from real Supabase indicators + monthlyData
   const rankedDepts = useMemo(() => {
-    return DEPARTMENTS.map((deptName, idx) => {
-      const deptInds = indicators.filter(ind => ind.programArea === deptName);
-      
-      let avgPerformance = 0;
-      if (deptInds.length > 0) {
-        const total = deptInds.reduce((sum, ind) => {
-          const actual = getActualYTD(ind.code, monthlyData);
-          return sum + (ind.target > 0 ? (actual / ind.target) * 100 : 0);
-        }, 0);
-        avgPerformance = Math.round(total / deptInds.length);
+    // Ensure indicators is an array before mapping
+    if (!Array.isArray(indicators)) {
+      console.warn("Indicators prop is not an array in RecognitionBoard. Defaulting to empty array.");
+      return [];
+    }
+    const activeIndicators = indicators;
+    const activeMonthlyData = monthlyData;
+
+    return DEPARTMENTS.map((deptName, idx) => { // Use the DEPARTMENTS array from the context
+      const allDeptInds = activeIndicators.filter(i => i.programArea === deptName); // Use programArea
+      const selectedCodes = selectedIndicatorsByDept[deptName] || [];
+
+      const deptInds = selectedCodes.length > 0
+          ? allDeptInds.filter(i => selectedCodes.includes(i.code))
+          : allDeptInds;
+
+      let programmePerformance = 0;
+      let dataQuality = 90; // Default for historical or if no data
+
+      if (deptInds.length === 0) {
+          // If no indicators for department, assign default scores
+          return {
+              name: deptName,
+              breakdown: {
+                  programmePerformance: 80, ehsig: 80, ipc: 80, dataQuality: 80
+              },
+              indicators: [],
+              trend: "stable" as const,
+              prevRank: idx + 1 // Placeholder
+          } as DeptScore;
       }
 
-      // Simulated breakdown for other categories based on avg performance
-      const ehsig = Math.min(100, Math.max(0, avgPerformance - 2 + (idx % 5)));
-      const ipc = Math.min(100, Math.max(0, avgPerformance - 4 + (idx % 7)));
-      const dataQuality = Math.min(100, Math.max(0, avgPerformance - 1 + (idx % 3)));
+      // --- Calculate Programme Performance ---
+      let totalAchievement = 0;
+      let scoredCount = 0;
+
+      if (selectedYear === "2018") {
+          let targetMonths: string[] = [];
+          let monthsInPeriod = 0;
+
+          if (selectedInterval === "annual") {
+              targetMonths = MONTHS; // All months
+              monthsInPeriod = 12;
+          } else if (selectedInterval === "six-month") {
+              targetMonths = selectedPeriodRef === "H1"
+                  ? ["Hamle", "Nehase", "Meskerem", "Tikimt", "Hidar", "Tahsas"]
+                  : ["Tirr", "Yekatit", "Megabit", "Miazia", "Ginbot", "Sene"];
+              monthsInPeriod = 6;
+          } else { // quarterly
+              if (selectedPeriodRef === "Q1") targetMonths = ["Hamle", "Nehase", "Meskerem"];
+              else if (selectedPeriodRef === "Q2") targetMonths = ["Tikimt", "Hidar", "Tahsas"];
+              else if (selectedPeriodRef === "Q3") targetMonths = ["Tirr", "Yekatit", "Megabit"];
+              else targetMonths = ["Miazia", "Ginbot", "Sene"];
+              monthsInPeriod = 3;
+          }
+
+          deptInds.forEach(ind => {
+              const annualTarget = ind.target > 0 ? ind.target : 100;
+              const reportsInPeriod = activeMonthlyData.filter(e => e.code === ind.code && targetMonths.includes(e.month));
+              const sumActualInPeriod = reportsInPeriod.reduce((acc, curr) => acc + (curr.actual || 0), 0);
+
+              // Calculate target for the period
+              let periodTarget = (annualTarget / 12) * monthsInPeriod;
+              if (ind.unit.includes("%") || ind.unit.toLowerCase().includes("rate") || ind.unit.toLowerCase().includes("ratio")) {
+                  // For percentage/rate indicators, target is usually the same regardless of period length
+                  periodTarget = annualTarget;
+              }
+
+              if (periodTarget > 0) {
+                  const achievement = Math.min(200, (sumActualInPeriod / periodTarget) * 100); // Cap at 200%
+                  totalAchievement += achievement;
+                  scoredCount++;
+              }
+          });
+
+          programmePerformance = scoredCount > 0 ? Math.round(totalAchievement / scoredCount) : 0;
+
+          // --- Calculate Data Quality for 2018 ---
+          let expectedEntries = deptInds.length * monthsInPeriod;
+          let actualEntries = 0;
+          deptInds.forEach(ind => {
+              const reports = activeMonthlyData.filter(e => e.code === ind.code && targetMonths.includes(e.month) && e.actual !== null);
+              actualEntries += reports.length;
+          });
+          dataQuality = expectedEntries > 0 ? Math.max(30, Math.min(100, Math.round((actualEntries / expectedEntries) * 100))) : 90;
+
+      } else {
+          // --- Historical Years (2016, 2017) ---
+          // Since the Indicator model doesn't have historical perf/plan, use baseline/target as proxies
+          deptInds.forEach(ind => {
+              const historicalActual = ind.baseline; // Use baseline as a proxy for historical actual
+              const historicalTarget = ind.target > 0 ? ind.target : 100; // Use current target as proxy for historical target
+
+              if (historicalTarget > 0) {
+                  const achievement = Math.min(200, (historicalActual / historicalTarget) * 100);
+                  totalAchievement += achievement;
+                  scoredCount++;
+              }
+          });
+          programmePerformance = scoredCount > 0 ? Math.round(totalAchievement / scoredCount) : 0;
+          dataQuality = 95 - (idx % 3) * 2; // Default high quality for historical data
+      }
+
+      // Ensure programmePerformance is within 0-100 range
+      programmePerformance = Math.max(0, Math.min(100, programmePerformance));
+
+      // --- Calculate EHSIG and IPC (derived from Programme Performance) ---
+      const ehsig = Math.max(55, Math.min(100, Math.round(programmePerformance * 0.9 + 5)));
+      const ipc = Math.max(60, Math.min(100, Math.round(programmePerformance * 0.85 + (idx * 2) + 8)));
+
+      // --- Indicator Labels for breakdown ---
+      const indicatorLabels = deptInds.slice(0, 5).map(ind => {
+          return `${ind.indicator} (Code: ${ind.code}, Unit: ${ind.unit})`;
+      });
+
+      const trends = ["up" as const, "stable" as const, "down" as const, "stable" as const, "up" as const];
+      const prevRanks = [2, 1, 4, 3, 5, 6, 8, 7, 9, 10, 11, 12]; // Placeholder for previous ranks
 
       return {
         name: deptName,
-        indicators: deptInds.slice(0, 5).map(i => i.indicator),
+        indicators: indicatorLabels.length > 0 ? indicatorLabels : [
+          "Skilled Delivery Services coverage metrics",
+          "Essential therapeutics & inventory availability"
+        ],
         breakdown: {
-          programmePerformance: avgPerformance,
+          programmePerformance: programmePerformance,
           ehsig,
           ipc,
           dataQuality
@@ -287,12 +419,13 @@ export default function RecognitionBoard({
         trend: (idx % 3 === 0 ? "up" : idx % 3 === 1 ? "down" : "stable") as DeptScore["trend"],
         prevRank: idx + 1,
       } as DeptScore;
-    }).map(d => ({
+    });
+  }).map(d => ({
       ...d,
       score: computeScore(d.breakdown, weights)
     })).sort((a, b) => b.score - a.score)
       .map((d, i) => ({ ...d, rank: i + 1 }));
-  }, [indicators, monthlyData, weights]);
+  }, [indicators, monthlyData, weights, selectedIndicatorsByDept]);
 
   const topThree = rankedDepts.slice(0, 3);
   const podiumOrder = [topThree[1], topThree[0], topThree[2]].filter(Boolean);
@@ -300,24 +433,120 @@ export default function RecognitionBoard({
     ? Math.round(rankedDepts.reduce((s, d) => s + d.score, 0) / rankedDepts.length)
     : 0;
 
+  const DEPARTMENTS = [ // Moved DEPARTMENTS here to be used in dynamicDepts
+    "Maternal & Child Health", "Child Health", "EPI", "Surgical Services", "Hospital Utilization",
+    "Quality & Safety", "Pharmacy", "Blood Bank", "Tuberculosis", "HIV Prevention and Control",
+    "Non-Communicable Diseases", "Nutrition",
+    : 0;
+
   return (
     <div className="space-y-5">
-      {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-bold tracking-tight text-slate-900">Hospital Recognition Board</h2>
-          <p className="text-xs text-slate-500 font-medium">
-            Active Block: <strong className="text-amber-600 font-bold uppercase">{selectedEFY}</strong>
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {weights.map((w, i) => (
-            <div key={i} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border bg-white shadow-sm text-xs">
-              <span className="w-2 h-2 rounded-full inline-block" style={{ background: w.color }} />
-              <span className="text-slate-500 font-medium">{w.label}</span>
-              <span className="font-bold text-slate-900 tabular-nums">{w.weight}%</span>
+      {/* ── Visual Context Bar ── */}
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-slate-900 p-5 rounded-2xl text-white shadow-xl">
+        <div className="flex items-center gap-3">
+          <div className="bg-amber-500 p-2.5 rounded-xl shadow-lg shadow-amber-500/20">
+            <Trophy className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h2 className="text-base font-extrabold tracking-tight">Hospital Recognition Board</h2>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-slate-400">
+                <CalendarRange className="h-3 w-3" /> EFY {selectedEFY}
+              </span>
+              <span className="h-1 w-1 rounded-full bg-slate-700" />
+              <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-amber-400">
+                <Clock className="h-3 w-3" /> {interval} Appraisal Cycle
+              </span>
             </div>
-          ))}
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          <div className="hidden sm:flex flex-col items-end">
+            <span className="text-[10px] font-bold uppercase text-slate-500">Block: {subBlock}</span>
+            <div className="flex items-center gap-1 text-xs font-semibold text-emerald-400">
+              <CheckCircle2 className="h-3 w-3" /> Weights Active
+            </div>
+          </div>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="h-10 w-10 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-xl transition-all border border-white/5"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* ── Period & Schedule Filter Bar ── */}
+      <div className="bg-slate-50 border border-slate-205 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <CalendarDays className="h-5 w-5 text-indigo-500" />
+          <div>
+            <h4 className="text-xs font-bold text-slate-800">Session Appraisal View</h4>
+            <p className="text-[10px] text-slate-400">Toggles historical years or quarterly/six-month reporting frames.</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+          {/* Year selector */}
+          <select
+            value={selectedYear}
+            onChange={(e) => {
+              setSelectedYear(e.target.value);
+              // reset intervals if year changes from 2018
+              if (e.target.value !== "2018") {
+                setSelectedInterval("annual");
+                setSelectedPeriodRef("Annual");
+              }
+            }}
+            className="h-9 px-3 border border-indigo-200 rounded-xl text-xs bg-indigo-50/40 text-indigo-900 font-bold focus:outline-none cursor-pointer hover:bg-indigo-100 transition-colors"
+          >
+            <option value="2016">2016 EFY (Baseline Year)</option>
+            <option value="2017">2017 EFY (Intermediate Year)</option>
+            <option value="2018">2018 EFY (Active dynamic)</option>
+          </select>
+
+          {/* Time Interval Selector (only active for 2018) */}
+          <select
+            value={selectedInterval}
+            disabled={selectedYear !== "2018"}
+            onChange={(e) => {
+              const val = e.target.value as any;
+              setSelectedInterval(val);
+              if (val === "annual") setSelectedPeriodRef("Annual");
+              else if (val === "six-month") setSelectedPeriodRef("H1");
+              else setSelectedPeriodRef("Q1");
+            }}
+            className="h-9 px-3 border border-slate-220 rounded-xl text-xs bg-white text-slate-705 font-bold focus:outline-none cursor-pointer disabled:opacity-50 hover:bg-slate-50"
+          >
+            <option value="annual">YTD Annually</option>
+            <option value="six-month">Six-Month Cycle</option>
+            <option value="quarterly">Quarterly Session</option>
+          </select>
+
+          {/* Sub Period Reference selector */}
+          <select
+            value={selectedPeriodRef}
+            disabled={selectedYear !== "2018" || selectedInterval === "annual"}
+            onChange={(e) => setSelectedPeriodRef(e.target.value)}
+            className="h-9 px-3 border border-slate-220 rounded-xl text-xs bg-white text-slate-705 font-bold focus:outline-none cursor-pointer disabled:opacity-50 hover:bg-slate-50"
+          >
+            {selectedInterval === "annual" && <option value="Annual">Annual Appraisal</option>}
+            {selectedInterval === "six-month" && (
+              <>
+                <option value="H1">H1: Hamle - Tahsas (First Half)</option>
+                <option value="H2">H2: Tirr - Sene (Second Half)</option>
+              </>
+            )}
+            {selectedInterval === "quarterly" && (
+              <>
+                <option value="Q1">Q1: Hamle - Meskerem</option>
+                <option value="Q2">Q2: Tikimt - Tahsas</option>
+                <option value="Q3">Q3: Tirr - Megabit</option>
+                <option value="Q4">Q4: Miazia - Sene</option>
+              </>
+            )}
+          </select>
         </div>
       </div>
 
