@@ -11,9 +11,6 @@ permissions:
 
 jobs:
   deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -28,7 +25,7 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          # በ GitHub Settings ውስጥ ያስገባሃቸውን ስሞች እዚህ ጋር በትክክል ተጠቀም
+          # ?%? GitHub Settings ?<??^?O? ?<??^?O^?%??^??%,?<??S ?^?^z?%? ?S??<s?^. ?O<?^- ?%??%?S-?S-?^? ?%??O??%??^?
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
       - name: Setup Pages
