@@ -1,0 +1,6 @@
+{
+  "name": "Hospital KPI Tracker",
+  "description": "A comprehensive KPI tracking and action planning system for Chefa Robit Hospital, managed by Plan Coordinator Nuredin Muhammed.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

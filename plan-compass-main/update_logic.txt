@@ -1,0 +1,11 @@
+  const [selectedYear, setSelectedYear] = useState('2016');
+  const [selectedMonth, setSelectedMonth] = useState('Hamle');
+  const [selectedQuarter, setSelectedQuarter] = useState('Q1');
+  
+  const ethiopianMonths = ['Hamle', 'Nehasse', 'Meskerem', 'Tikimt', 'Hidar', 'Tahsas', 'Tirr', 'Yekatit', 'Megabit', 'Miazia', 'Ginbot', 'Sene'];
+  const quarters = ['Q1 (Hamle-Meskerem)', 'Q2 (Tikimt-Tahsas)', 'Q3 (Tirr-Megabit)', 'Q4 (Miazia-Sene)'];
+  const years = ['2016', '2017', '2018'];
+
+  const filteredMonthlyData = useMemo(() => {
+    return monthlyData.filter(d => d.month === selectedMonth);
+  }, [monthlyData, selectedMonth]);
